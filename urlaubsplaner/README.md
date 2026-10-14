@@ -4,6 +4,8 @@ Hier trägt das Team Urlaub und andere Abwesenheiten ein und sieht, wie viele Ta
 übrig sind. Die zwei Besitzer:innen genehmigen. Es gibt keine Patientendaten und keine
 Krankenstände.
 
+**Live:** <https://d2ubta4o04syzz.cloudfront.net/> (nur mit Anmeldung)
+
 Der ganze Plan steht in `PLAN.md`, die Antworten auf die offenen Fragen in `CLAUDE.md`.
 
 ## Was schon geht (Phase 1)
