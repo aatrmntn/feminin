@@ -320,6 +320,8 @@ export class PlannerStack extends Stack {
       ],
       distribution,
       distributionPaths: ['/*'],
+      // Browsers ask every time whether a file changed, so a new version shows at once.
+      cacheControl: [s3deploy.CacheControl.noCache()],
     });
 
     // ---------- cost alarm (optional) ----------
