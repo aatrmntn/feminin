@@ -104,7 +104,9 @@ function render() {
   );
   const page = currentPage();
   if (page === 'team') {
-    main.replaceChildren(renderNav(page), teamPage({ today: d.today, myId: d.me.userId }));
+    main.replaceChildren(renderNav(page), teamPage({
+      today: d.today, myId: d.me.userId, canApprove: d.me.canApprove, onPick: pickFromTeam,
+    }));
     return;
   }
   if (page === 'antraege') {
@@ -131,6 +133,19 @@ function render() {
     renderExport(),
   );
   if (focusDate) main.querySelector(`[data-date="${focusDate}"]`)?.focus();
+}
+
+// Approvers: a click on a day in someone's row of the team view opens the drawer for them.
+async function pickFromTeam({ userId, date, entryId }) {
+  if (!entryId) {
+    openDrawer(null, date, date, userId);
+    return;
+  }
+  try {
+    openDrawer(await api('GET', `/api/entries/${entryId}`));
+  } catch (err) {
+    showToast(err.message);
+  }
 }
 
 function renderBalance(b) {
@@ -371,9 +386,12 @@ function renderEntries() {
 
 // ---------- drawer ----------
 
-function openDrawer(entry, start, end = start) {
+// forUserId: approvers entering leave for someone else (from the team view or the picker).
+function openDrawer(entry, start, end = start, forUserId = null) {
   const d = state.data;
   const isNew = !entry;
+  const people = d.people || [];
+  const personOf = (id) => people.find((p) => p.userId === id) || (id === d.me.userId ? d.me : null);
   const e = entry || { kind: 'vacation', reason: '', start, end, half: '', note: '' };
   const locked = !isNew && !d.me.canApprove && e.status === 'approved' && e.start < d.today;
   let checkSeq = 0;
@@ -388,7 +406,12 @@ function openDrawer(entry, start, end = start) {
   const startInput = h('input', { type: 'date', name: 'start', id: 'f-start', value: e.start, min: '2020-01-01', max: '2040-12-31', required: true });
   const endInput = h('input', { type: 'date', name: 'end', id: 'f-end', value: e.end, min: '2020-01-01', max: '2040-12-31', required: true });
   const note = h('textarea', { name: 'note', id: 'f-note', maxlength: '300', rows: '3' });
-  const isOwner = d.me.role === 'owner';
+  const canPick = isNew && d.me.canApprove && people.length > 0;
+  const who = canPick ? h('select', { id: 'f-who' },
+    people.map((p) => h('option', { value: p.userId, selected: p.userId === (forUserId || d.me.userId) }, p.userId === d.me.userId ? `${p.name} (ich)` : p.name))) : null;
+  const agreed = canPick ? h('input', { type: 'checkbox', id: 'f-agreed', checked: !!forUserId && forUserId !== d.me.userId }) : null;
+  const ownerId = () => (who ? who.value : (entry ? entry.userId : d.me.userId));
+  const isOwner = () => (personOf(ownerId())?.role || d.me.role) === 'owner';
   const substitute = h('input', { id: 'f-substitute', name: 'substitute', maxlength: '300', value: e.substitute || '', autocomplete: 'off' });
   note.value = e.note || '';
   const counter = h('span', { class: 'counter' });
@@ -400,14 +423,23 @@ function openDrawer(entry, start, end = start) {
     radio('half', 'am', 'Vormittag', e.half === 'am'),
     radio('half', 'pm', 'Nachmittag', e.half === 'pm'));
   const reasonField = h('div', { class: 'field' }, h('label', { for: 'f-reason' }, 'Grund'), reasonSelect);
+  const substituteField = h('div', { class: 'field' },
+    h('label', { for: 'f-substitute' }, 'Vertretung ', h('span', { class: 'hint' }, '(für Aushang und Kalender, z. B. Name, Adresse, Telefon)')),
+    substitute);
+  const whoField = canPick ? h('div', { class: 'who' },
+    h('div', { class: 'field' }, h('label', { for: 'f-who' }, 'Für wen'), who),
+    h('label', { class: 'check', for: 'f-agreed' }, agreed,
+      h('span', {}, 'Ist schon genehmigt', h('span', { class: 'hint' }, ' (wird gleich bestätigt, kein Antrag nötig)')))) : null;
   const saveBtn = h('button', { class: 'button primary', type: 'submit' }, isNew ? 'Eintragen' : 'Speichern');
 
   form.append(...[
     h('header', { class: 'drawer-head' },
-      h('h2', { id: 'drawer-title' }, isNew ? 'Neuer Eintrag' : 'Eintrag'),
+      h('h2', { id: 'drawer-title' }, isNew ? 'Neuer Eintrag'
+        : entry.userId !== d.me.userId ? `Eintrag von ${personOf(entry.userId)?.name || 'jemand anderem'}` : 'Eintrag'),
       isNew ? null : h('span', { class: `badge ${e.status}` }, STATUS[e.status]),
       h('button', { class: 'button icon close', type: 'button', 'aria-label': 'Schließen', onclick: () => drawer.close() }, '×')),
     locked ? h('p', { class: 'notice' }, 'Dieser Urlaub hat schon begonnen. Änderungen macht die Praxisleitung.') : null,
+    whoField,
     h('fieldset', { class: 'choices' }, h('legend', {}, 'Art'),
       radio('kind', 'vacation', 'Urlaub', e.kind === 'vacation'),
       radio('kind', 'absence', 'Andere Abwesenheit', e.kind === 'absence')),
@@ -416,9 +448,7 @@ function openDrawer(entry, start, end = start) {
       h('div', { class: 'field' }, h('label', { for: 'f-start' }, 'Von'), startInput),
       h('div', { class: 'field' }, h('label', { for: 'f-end' }, 'Bis'), endInput)),
     halfField,
-    isOwner ? h('div', { class: 'field' },
-      h('label', { for: 'f-substitute' }, 'Vertretung ', h('span', { class: 'hint' }, '(für Aushang und Kalender, z. B. Name, Adresse, Telefon)')),
-      substitute) : null,
+    substituteField,
     h('div', { class: 'field' },
       h('label', { for: 'f-note' }, 'Notiz ', h('span', { class: 'hint' }, '(sehen nur du und die Praxisleitung)')),
       note, counter),
@@ -429,7 +459,7 @@ function openDrawer(entry, start, end = start) {
     h('div', { class: 'actions' },
       locked ? null : saveBtn,
       !isNew && !locked ? h('button', { class: 'button danger', type: 'button', onclick: remove }, 'Löschen') : null,
-      !isNew && isOwner ? h('button', { class: 'button', type: 'button', onclick: () => printNotice(absenceNotice(e)) }, 'Aushang drucken') : null,
+      !isNew && isOwner() && entry.userId === d.me.userId ? h('button', { class: 'button', type: 'button', onclick: () => printNotice(absenceNotice(e)) }, 'Aushang drucken') : null,
       h('button', { class: 'button', type: 'button', onclick: () => drawer.close() }, locked ? 'Schließen' : 'Abbrechen')),
   ].filter(Boolean));
   if (locked) for (const el of form.querySelectorAll('input, select, textarea')) el.disabled = true;
@@ -442,7 +472,8 @@ function openDrawer(entry, start, end = start) {
     const half = s === en ? (fd.get('half') || '') : '';
     return {
       kind, reason: kind === 'absence' ? reasonSelect.value : '', start: s, end: en, half, note: note.value,
-      substitute: isOwner ? substitute.value : '',
+      substitute: isOwner() ? substitute.value : '',
+      ...(canPick ? { userId: who.value, approved: agreed.checked } : {}),
     };
   }
 
@@ -453,6 +484,7 @@ function openDrawer(entry, start, end = start) {
     for (const input of halfField.querySelectorAll('input[value="am"], input[value="pm"]')) input.disabled = locked || !oneDay;
     if (!oneDay) halfField.querySelector('input[value=""]').checked = true;
     counter.textContent = `${note.value.length} / 300`;
+    substituteField.hidden = !isOwner();
   }
 
   async function check() {
@@ -486,7 +518,7 @@ function openDrawer(entry, start, end = start) {
       if (isNew) await api('POST', '/api/entries', v);
       else await api('PUT', `/api/entries/${entry.id}`, { ...v, expectedRev: entry.rev });
       drawer.close();
-      showToast(isNew && v.kind === 'vacation' ? 'Eingetragen. Die Praxisleitung bestätigt deinen Antrag.' : 'Gespeichert.');
+      showToast(savedText(v, isNew));
       await load();
     } catch (err) {
       error.textContent = err.message;
@@ -619,6 +651,22 @@ function openFeedDialog() {
   extraDialog.showModal();
 }
 
+function savedText(v, isNew) {
+  if (!isNew) return 'Gespeichert.';
+  const d = state.data;
+  const other = v.userId && v.userId !== d.me.userId ? (d.people || []).find((p) => p.userId === v.userId) : null;
+  if (other) return v.approved ? `Für ${other.name} eingetragen und bestätigt.` : `Für ${other.name} eingetragen, wartet auf Bestätigung.`;
+  if (v.approved) return 'Eingetragen und bestätigt.';
+  return v.kind === 'vacation' ? 'Eingetragen. Die Praxisleitung bestätigt deinen Antrag.' : 'Gespeichert.';
+}
+
+// "dir" for your own entries, the person's name when an approver enters for someone else.
+function whom(v) {
+  const d = state.data;
+  if (!v.userId || v.userId === d.me.userId) return 'dir';
+  return (d.people || []).find((p) => p.userId === v.userId)?.name || 'der Person';
+}
+
 function summaryText(v, res) {
   if (v.kind !== 'vacation') {
     return 'Zählt nicht als Urlaub. Für die Mindestbesetzung zählt es trotzdem als abwesend.';
@@ -626,11 +674,11 @@ function summaryText(v, res) {
   const years = Object.keys(res.byYear);
   const what = `${num(res.days)} ${res.days === 1 ? 'Urlaubstag' : 'Urlaubstage'}`;
   if (years.length === 1) {
-    return `${what}. Danach bleiben dir ${days(res.remainingAfter[years[0]])} für ${years[0]}.`;
+    return `${what}. Danach bleiben ${whom(v)} ${days(res.remainingAfter[years[0]])} für ${years[0]}.`;
   }
   const split = years.map((y) => `${num(res.byYear[y])} in ${y}`).join(', ');
   const left = years.map((y) => `${days(res.remainingAfter[y])} für ${y}`).join(' und ');
-  return `${what} (${split}). Danach bleiben dir ${left}.`;
+  return `${what} (${split}). Danach bleiben ${whom(v)} ${left}.`;
 }
 
 // ---------- display name ----------

@@ -67,12 +67,34 @@ test('part-time allowance is scaled', async () => {
   assert.deepEqual(o.me.workPattern, ['mon', 'tue', 'thu']);
 });
 
-test('the user id comes from the token, never from the body', async () => {
+test('the user id comes from the token: staff cannot book for others or approve themselves', async () => {
   const { call, db } = setup();
-  const res = await call(ANNA, 'POST', '/api/entries', { kind: 'vacation', start: '2026-11-02', userId: 'u-berta', status: 'approved' });
+  const other = await call(ANNA, 'POST', '/api/entries', { kind: 'vacation', start: '2026-11-02', userId: 'u-berta' });
+  assert.equal(other.status, 403);
+  assert.equal((await db.listUserEntries('u-berta', '2026-01-01', '2026-12-31')).length, 0);
+  const res = await call(ANNA, 'POST', '/api/entries', { kind: 'vacation', start: '2026-11-02', status: 'approved', approved: true });
   assert.equal(res.body.item.userId, 'u-anna');
   assert.equal(res.body.item.status, 'pending');
-  assert.equal((await db.listUserEntries('u-berta', '2026-01-01', '2026-12-31')).length, 0);
+});
+
+test('approvers can enter already agreed leave for someone else', async () => {
+  const { call, db } = setup();
+  const res = await call(CHEFIN, 'POST', '/api/entries', { kind: 'vacation', start: '2026-12-21', end: '2026-12-23', userId: 'u-berta', approved: true });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.item.userId, 'u-berta');
+  assert.equal(res.body.item.status, 'approved');
+  assert.equal(res.body.item.days, 2, "Berta's pattern Mon, Tue, Thu: 21 and 22 Dec, 23 is a Wednesday");
+  assert.equal(db.audit.at(-1).action, 'create-approved');
+  assert.equal(db.audit.at(-1).actorId, 'u-chefin');
+  // checked against Berta's own entries
+  const clash = await call(CHEFIN, 'POST', '/api/entries', { kind: 'vacation', start: '2026-12-22', userId: 'u-berta' });
+  assert.equal(clash.status, 400);
+  const check = await call(CHEFIN, 'POST', '/api/check', { kind: 'vacation', start: '2026-12-28', end: '2026-12-31', userId: 'u-berta' });
+  assert.equal(check.body.item.days, 3);
+  assert.equal((await call(CHEFIN, 'POST', '/api/entries', { kind: 'vacation', start: '2026-12-28', userId: 'u-gone' })).status, 404);
+  const o = (await call(CHEFIN, 'GET', '/api/overview')).body.item;
+  assert.deepEqual(o.people.map((p) => p.name), ['Anna', 'Berta', 'Chefin']);
+  assert.deepEqual((await call(ANNA, 'GET', '/api/overview')).body.item.people, []);
 });
 
 test("someone else's entry is a 404 for staff, visible with note for approvers", async () => {

@@ -435,3 +435,8 @@ input[type="number"] {
   .notice-sheet p { font-family: var(--font); font-size: 20pt; line-height: 1.4; margin: 0 0 .6cm; }
   .notice-sheet .notice-footer { margin-top: 2cm; font-size: 16pt; }
 }
+
+/* Approvers enter leave for others from the team view. */
+.timeline.can-pick td[data-user] { cursor: pointer; }
+.timeline.can-pick td[data-user]:hover { outline: 2px solid var(--accent-2); outline-offset: -2px; }
+.who { display: grid; gap: .5rem; padding: .75rem 1rem; background: var(--surface-2); border-radius: 8px; }

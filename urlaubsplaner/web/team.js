@@ -6,11 +6,22 @@ import {
 
 const view = { month: null, query: '', role: '' };
 
-export function teamPage({ today, myId }) {
+// canApprove + onPick: approvers click a day in someone's row to enter or open their leave.
+export function teamPage({ today, myId, canApprove = false, onPick = null }) {
   if (!view.month) view.month = today.slice(0, 7);
   const section = h('section', { class: 'team' }, h('p', { class: 'loading' }, 'Wird geladen …'));
+  view.pick = canApprove && onPick ? onPick : null;
   load(section, today, myId);
   return section;
+}
+
+function pickCell(ev) {
+  if (!view.pick) return;
+  if (ev.type === 'keydown' && ev.key !== 'Enter' && ev.key !== ' ') return;
+  const cell = ev.target.closest('td[data-user]');
+  if (!cell) return;
+  ev.preventDefault();
+  view.pick({ userId: cell.dataset.user, date: cell.dataset.date, entryId: cell.dataset.entry || '' });
 }
 
 async function load(section, today, myId) {
@@ -39,7 +50,7 @@ async function load(section, today, myId) {
     const refilter = () => {
       view.query = search.value;
       view.role = roleSelect.value;
-      body.replaceChildren(...content(data, myId));
+      body.replaceChildren(...content(data, myId).filter(Boolean));
     };
     search.addEventListener('input', refilter);
     roleSelect.addEventListener('change', refilter);
@@ -65,6 +76,7 @@ function content(data, myId) {
   const people = data.people.filter((p) => (!view.role || p.role === view.role)
     && (!q || p.name.toLocaleLowerCase('de').includes(q)));
   return [
+    view.pick ? h('p', { class: 'hint' }, 'Klick auf einen Tag in der Zeile einer Person, um für sie einzutragen. Ein farbiger Tag öffnet den Eintrag.') : null,
     timeline(data, people, myId),
     h('ul', { class: 'legend', 'aria-label': 'Legende' },
       legendItem('k-vacation', 'Urlaub'),
@@ -139,7 +151,7 @@ function timeline(data, people, myId) {
     for (const p of members) groups.push(personRow(p, data, dayClass, myId));
   }
 
-  const table = h('table', { class: 'timeline' },
+  const table = h('table', { class: `timeline${view.pick ? ' can-pick' : ''}`, onclick: pickCell, onkeydown: pickCell },
     h('caption', { class: 'sr-only' }, 'Abwesenheiten im Team, ein Tag pro Spalte'),
     h('thead', {}, head),
     h('tbody', {}, staffingRows, groups));
@@ -164,7 +176,13 @@ function personRow(p, data, dayClass, myId) {
         cls.push('has-entry', `k-${e.kind}`, e.status === 'pending' ? 'pending' : '', e.half && !both ? `half-${e.half}` : '');
         text = hits.map((x) => `${kindText(x, data.reasons)}${x.half ? ` (${HALF[x.half]})` : ''}, ${STATUS[x.status]}`).join('; ');
       }
-      return h('td', { class: cls.filter(Boolean).join(' '), title: text ? `${p.name}, ${longDate(d.date)}: ${text}` : null },
-        text ? h('span', { class: 'sr-only' }, text) : null);
+      const pickable = !!view.pick;
+      return h('td', {
+        class: cls.filter(Boolean).join(' '),
+        title: text ? `${p.name}, ${longDate(d.date)}: ${text}` : (pickable ? `${p.name}, ${longDate(d.date)}: eintragen` : null),
+        dataset: pickable ? { user: p.userId, date: d.date, entry: e ? e.id : '' } : null,
+        tabindex: pickable ? '0' : null,
+        'aria-label': pickable ? `${p.name}, ${longDate(d.date)}${text ? `: ${text}` : ''}` : null,
+      }, text ? h('span', { class: 'sr-only' }, text) : null);
     }));
 }

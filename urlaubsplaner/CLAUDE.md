@@ -71,3 +71,7 @@ patient discovery page and has nothing to do with it.
 - Retention: a second Lambda (`handler.retention`) runs on 2 January; keeps the current
   year plus two, deletes older entries and audit records.
 - Door notices are printed from the browser (`@media print`, #print-area).
+- Approvers can enter leave for any active person (`userId` in POST /api/entries and
+  /api/check) and mark it `approved: true` ("Ist schon genehmigt"), e.g. to carry over
+  leave agreed before the planner existed. Audit action `create-approved`. Staff sending
+  another `userId` get 403. In the team view, approvers click a day in a person's row.

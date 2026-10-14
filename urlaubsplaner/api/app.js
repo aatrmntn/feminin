@@ -311,6 +311,12 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
         balance: rules.balance({ person: me.person, year, today, entries, closures, settings }),
         reasons: rules.REASONS,
         openRequests: me.isApprover ? await countOpenRequests(me, today) : 0,
+        // Approvers can enter leave for others: who is there to pick from.
+        people: me.isApprover
+          ? (await db.listPeople()).filter((p) => p.active !== false)
+            .map((p) => ({ userId: p.userId, name: p.name, role: p.role }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+          : [],
       },
     };
   }
@@ -328,8 +334,9 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
     const me = await caller(req);
     const input = readBody(req);
     const id = typeof input.id === 'string' ? input.id : null;
-    let owner = me.person;
+    let owner;
     if (id) ({ owner } = await visibleEntry(id, me));
+    else owner = await targetOwner(me, input);
     const { settings, today } = await context();
     const { value, error, closures } = await validate(input, owner, id);
     if (error) return { item: { ok: false, error } };
@@ -349,24 +356,39 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
     return { item: { ok: true, days: total, byYear, remainingAfter: after, warnings, warningText } };
   }
 
+  // Whose entry this is: the caller, or (approvers only) another active person.
+  async function targetOwner(me, input) {
+    const userId = typeof input.userId === 'string' ? input.userId : '';
+    if (!userId || userId === me.person.userId) return me.person;
+    requireApprover(me);
+    const person = await db.getPerson(userId);
+    if (!person || person.active === false) throw new HttpError(404, 'Diese Person gibt es nicht.');
+    return person;
+  }
+
   async function createEntry(req) {
     const me = await caller(req);
+    const input = readBody(req);
+    const owner = await targetOwner(me, input);
     const { settings } = await context();
-    const { value, error, closures } = await validate(readBody(req), me.person, null);
+    const { value, error, closures } = await validate(input, owner, null);
     if (error) throw new HttpError(400, error);
     const at = now().toISOString();
+    // Approvers can enter leave that was already agreed (e.g. when the planner starts).
+    const agreed = me.isApprover && input.approved === true;
     const entry = {
       id: randomUUID(),
-      userId: me.person.userId,
+      userId: owner.userId,
       ...value,
-      status: initialStatus(value.kind, settings),
+      status: agreed ? 'approved' : initialStatus(value.kind, settings),
+      ...(agreed ? { decidedBy: me.person.userId, decidedAt: at } : {}),
       rev: 1,
       createdAt: at,
       updatedAt: at,
     };
-    await db.createEntry(entry, auditRecord(me, 'create', entry));
-    await tellApprovers(entry, me.person, settings);
-    return { created: true, item: present(entry, me.person, closures, { withNote: true }) };
+    await db.createEntry(entry, auditRecord(me, agreed ? 'create-approved' : 'create', entry));
+    await tellApprovers(entry, owner, settings);
+    return { created: true, item: present(entry, owner, closures, { withNote: true }) };
   }
 
   async function getEntry(req, id) {
