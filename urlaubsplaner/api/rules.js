@@ -607,6 +607,11 @@ export function validatePersonUpdate(input, person) {
     if (!isHalfStep(n) || n < -60 || n > 60) return fail('Korrektur: bitte -60 bis 60 Tage, in halben Tagen.');
     if (n === 0) delete next.extraDays; else next.extraDays = n;
   }
+  if (src.email !== undefined) {
+    const email = typeof src.email === 'string' ? src.email.trim() : '';
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('Die E-Mail-Adresse sieht nicht richtig aus.');
+    if (email) next.email = email; else delete next.email;
+  }
   if (src.extraNote !== undefined) {
     const r = text(src.extraNote, NAME_MAX, 'Der Grund der Korrektur');
     if (r.error) return r;

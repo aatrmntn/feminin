@@ -323,3 +323,22 @@ test('import: dry run writes nothing; then people, closures and approved entries
   assert.equal(again.entries.length, 0);
   assert.equal(again.closures.length, 0);
 });
+
+test('mail test: approvers only, needs email switched on and an address; shows send errors', async () => {
+  const sent = [];
+  let fail = false;
+  const db = createMemoryDb({ people });
+  const app = createApp({ db, now: () => new Date('2026-10-14T08:00:00Z'), notify: async (m) => { if (fail) throw new Error('x'); sent.push(m); } });
+  const call = (user) => app.handle({ method: 'POST', path: '/api/mail-test', query: {}, user });
+  assert.equal((await call(FO)).status, 403);
+  assert.match((await call(OW)).body.error, /keine E-Mail-Adresse/);
+  await app.handle({ method: 'PUT', path: '/api/people/ow1', body: { email: 'olga@example.at' }, query: {}, user: OW });
+  const ok = await call(OW);
+  assert.equal(ok.body.item.sentTo, 'olga@example.at');
+  assert.equal(sent[0].subject, 'Test vom Urlaubsplaner');
+  fail = true;
+  assert.equal((await call(OW)).status, 502);
+  const off = createApp({ db, now: () => new Date() });
+  assert.match((await off.handle({ method: 'POST', path: '/api/mail-test', query: {}, user: OW })).body.error, /noch nicht eingeschaltet/);
+  assert.equal((await app.handle({ method: 'PUT', path: '/api/people/ow1', body: { email: 'kaputt' }, query: {}, user: OW })).status, 400);
+});

@@ -88,3 +88,8 @@ patient discovery page and has nothing to do with it.
   /api/check) and mark it `approved: true` ("Ist schon genehmigt"), e.g. to carry over
   leave agreed before the planner existed. Audit action `create-approved`. Staff sending
   another `userId` get 403. In the team view, approvers click a day in a person's row.
+- Emails: `-c mailFrom=office@feminin.at` verifies the whole domain in SES with Easy DKIM
+  (feminin.at has DMARC p=quarantine and SPF only for Outlook, so unsigned SES mail would
+  be quarantined). The 3 DKIM CNAMEs are stack outputs for the domain host. A verified
+  domain also lets every feminin.at address receive mail in the SES sandbox.
+  POST /api/mail-test (approvers) sends a test mail to the caller's own address.

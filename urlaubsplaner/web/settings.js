@@ -98,7 +98,8 @@ const pattern = (keys) => keys.map((k) => WEEKDAYS[WD_KEYS.indexOf(k)].slice(0, 
 
 function peopleSection(data, ctx, reload) {
   const rows = data.people.map((p) => h('tr', { class: p.active ? '' : 'inactive' },
-    h('th', { scope: 'row' }, p.name, p.active ? null : h('span', { class: 'badge declined' }, 'deaktiviert'),
+    h('th', { scope: 'row' }, p.name, p.email ? h('span', { class: 'hint', title: p.email }, ' ✉') : null,
+      p.active ? null : h('span', { class: 'badge declined' }, 'deaktiviert'),
       p.approver ? h('span', { class: 'badge approved' }, 'darf genehmigen') : null),
     h('td', {}, p.roleLabel),
     h('td', {}, pattern(p.workPattern)),
@@ -133,6 +134,7 @@ function editPerson(p, data, ctx, reload) {
   const name = h('input', { id: 'p-name', maxlength: '80', value: p.name });
   const role = roleSelect('p-role', data.roles, p.role);
   const start = h('input', { id: 'p-start', type: 'date', min: '2000-01-01', max: '2040-12-31', value: p.startDate });
+  const email = h('input', { id: 'p-email', type: 'email', autocomplete: 'off', value: p.email });
   const allowance = numberInput('p-allowance', p.allowanceOverride, `automatisch: ${num(p.defaultAllowance)}`);
   const extra = h('input', { id: 'p-extra', type: 'number', min: '-60', max: '60', step: '0.5', inputmode: 'decimal', value: p.extraDays || '' });
   const extraNote = h('input', { id: 'p-extra-note', maxlength: '80', value: p.extraNote, placeholder: 'z. B. Mai 2026 mit 20 Stunden' });
@@ -142,6 +144,7 @@ function editPerson(p, data, ctx, reload) {
     field('p-role', 'Bereich', role),
     weekdayBoxes('p-days', p.workPattern),
     field('p-start', 'Eintrittsdatum', start, '(hier beginnt jedes Urlaubsjahr)'),
+    field('p-email', 'E-Mail für Benachrichtigungen', email, '(nur eigene Adresse; bekommt Mails zu Anträgen)'),
     field('p-allowance', `Urlaubsanspruch im Urlaubsjahr ${range}`, allowance, '(leer lassen = automatisch nach Arbeitstagen)'),
     h('div', { class: 'row' },
       field('p-extra', 'Korrektur in Tagen', extra, '(+ oder −)'),
@@ -162,6 +165,7 @@ function editPerson(p, data, ctx, reload) {
       role: role.value,
       workPattern: checked(form, 'p-days'),
       startDate: start.value,
+      email: email.value,
       yearStart: p.balance.yearStart,
       allowance: allowance.value === '' ? null : Number(allowance.value),
       extraDays: extra.value === '' ? 0 : Number(extra.value),
@@ -317,7 +321,26 @@ function practiceSection(s, reload) {
     field('s-allowance', 'Urlaubsanspruch bei 5 Arbeitstagen', allowance, '(Teilzeit wird automatisch umgerechnet)'),
     checkbox('s-approve', 'Fortbildung, Kongress & Co. müssen bestätigt werden', s.absenceNeedsApproval),
     error,
-    h('div', { class: 'actions' }, h('button', { class: 'button primary', type: 'submit' }, 'Speichern')));
+    h('div', { class: 'actions' }, h('button', { class: 'button primary', type: 'submit' }, 'Speichern')),
+    h('div', { class: 'mail-test' },
+      h('h3', {}, 'E-Mails bei neuen Anträgen'),
+      h('p', { class: 'hint' }, s.mailEnabled
+        ? 'Eingeschaltet. Mails gehen an alle Besitzer:innen mit hinterlegter E-Mail-Adresse.'
+        : 'Noch ausgeschaltet.'),
+      s.mailEnabled ? h('button', {
+        class: 'button', type: 'button',
+        onclick: async (ev) => {
+          ev.target.disabled = true;
+          try {
+            const r = await api('POST', '/api/mail-test');
+            showToast(`Test-E-Mail an ${r.sentTo} gesendet.`);
+          } catch (err) {
+            showToast(err.message);
+          } finally {
+            ev.target.disabled = false;
+          }
+        },
+      }, 'Test-E-Mail an mich senden') : null));
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     error.textContent = '';

@@ -253,10 +253,19 @@ export class PlannerStack extends Stack {
     fn.addEnvironment('APP_URL', appUrl);
 
     // ---------- email (optional) ----------
-    // AWS sends a confirmation link to the sender address. While SES is in its test mode
-    // ("sandbox"), every recipient address has to be confirmed the same way (README).
+    // The whole sender domain is verified with DKIM signatures, so mails pass the domain's
+    // DMARC check (feminin.at uses p=quarantine) and every address of the domain may
+    // receive them while SES is in its test mode. The three DNS records to add at the
+    // domain's host are printed as outputs after deploying.
     if (props.mailFrom) {
-      new ses.EmailIdentity(this, 'MailFrom', { identity: ses.Identity.email(props.mailFrom) });
+      const mailDomain = props.mailFrom.split('@')[1];
+      const identity = new ses.EmailIdentity(this, 'MailDomain', { identity: ses.Identity.domain(mailDomain) });
+      identity.dkimRecords.forEach((r, i) => {
+        new CfnOutput(this, `MailDnsRecord${i + 1}`, {
+          value: `CNAME  ${r.name}  ->  ${r.value}`,
+          description: `DNS-Eintrag ${i + 1} von 3 für ${mailDomain}`,
+        });
+      });
       fn.addEnvironment('MAIL_FROM', props.mailFrom);
       fn.addToRolePolicy(new iam.PolicyStatement({
         actions: ['ses:SendEmail'],

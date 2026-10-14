@@ -93,16 +93,17 @@ Du brauchst nur den Zugang zum AWS-Konto der Praxis. Installieren musst du nicht
    Ganz am Ende steht `AppUrl = https://….cloudfront.net/`. **Das ist die Adresse des Planers.**
 6. Zugänge anlegen: siehe „Zugänge anlegen“ weiter unten.
 
-E-Mails einschalten (freiwillig): beim Veröffentlichen die Absender-Adresse dazuschreiben.
+E-Mails einschalten (freiwillig, schickt bei jedem neuen Antrag eine Mail an die Besitzer:innen):
 ```bash
 npm run deploy -- -c budgetEmail=a.tramontana@feminin.at -c mailFrom=office@feminin.at
 ```
-AWS schickt an office@feminin.at eine Mail mit einem Bestätigungslink. Bitte anklicken.
-Solange AWS den Mailversand im Testmodus hat („Sandbox“), müssen auch die Empfänger
-bestätigt sein: In der AWS-Konsole unter **Amazon SES → Identitäten → Identität erstellen**
-die Adressen a.tramontana@feminin.at und p.horak@feminin.at eintragen und die Links in
-den Mails anklicken. Wichtig: Immer dieselben `-c …`-Angaben verwenden, sonst werden die
-Mails beim nächsten Veröffentlichen wieder ausgeschaltet.
+Am Ende stehen 3 Zeilen `MailDnsRecord1` bis `3`. Diese 3 **CNAME-Einträge** muss der Webhoster
+von feminin.at in die DNS-Einstellungen eintragen. Damit erlaubt feminin.at dem Mail-Dienst
+von AWS, im Namen von feminin.at zu senden; sonst landen die Mails wegen der DMARC-Regel von
+feminin.at im Spam. Das Freischalten dauert danach bis zu 72 Stunden. Dann im Planer unter
+Einstellungen → Ordination auf „Test-E-Mail an mich senden“ klicken.
+Wichtig: Ab dann immer mit `-c mailFrom=office@feminin.at` veröffentlichen, sonst werden die
+Mails wieder ausgeschaltet.
 
 Bei einer neuen Version später nur noch:
 ```bash

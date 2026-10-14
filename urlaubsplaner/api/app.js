@@ -59,6 +59,7 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
     if (req.method === 'POST' && path === '/api/people') return addPerson(req);
     if (personPath && req.method === 'PUT') return updatePerson(req, personPath[1]);
     if (req.method === 'POST' && path === '/api/import') return importData(req);
+    if (req.method === 'POST' && path === '/api/mail-test') return mailTest(req);
     if (req.method === 'GET' && path === '/api/export.ics') return exportIcs(req);
     if (req.method === 'GET' && path === '/api/export.csv') return exportCsv(req);
     if (req.method === 'PUT' && path === '/api/me/feed') return createFeed(req);
@@ -645,7 +646,27 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
       defaultAllowance: settings.defaultAllowance,
       absenceNeedsApproval: settings.absenceNeedsApproval,
       roles: rules.ROLES,
+      mailEnabled: !!notify,
     };
+  }
+
+  // Approvers check that request emails arrive: one test mail to their own address.
+  async function mailTest(req) {
+    const me = await caller(req);
+    requireApprover(me);
+    if (!notify) throw new HttpError(400, 'E-Mails sind noch nicht eingeschaltet. Siehe Anleitung „E-Mails einschalten“.');
+    if (!me.person.email) throw new HttpError(400, 'Bei dir ist keine E-Mail-Adresse hinterlegt. Trag sie unter Team bei deinem Namen ein.');
+    try {
+      await notify({
+        to: [me.person.email],
+        subject: 'Test vom Urlaubsplaner',
+        text: `Hallo ${me.person.name},\n\ndiese Test-Mail ist angekommen. Bei neuen Anträgen bekommst du ab jetzt eine Nachricht.${appUrl ? `\n\nZum Planer: ${appUrl}` : ''}`,
+      });
+    } catch (err) {
+      console.error('Test mail failed', err?.name, err?.message);
+      throw new HttpError(502, 'Die Test-Mail konnte nicht gesendet werden. Meist sind die 3 DNS-Einträge für feminin.at noch nicht eingetragen oder noch nicht aktiv (das kann bis zu 72 Stunden dauern).');
+    }
+    return { item: { sentTo: me.person.email } };
   }
 
   async function getSettings(req) {
