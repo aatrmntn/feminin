@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Urlaubsplaner · feminin</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Zum Inhalt</a>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <span>Urlaubsplaner <span class="brand-sub">feminin</span></span>
+    </div>
+    <div class="top-actions" id="top-actions"></div>
+  </header>
+  <main id="main" tabindex="-1">
+    <p class="loading">Wird geladen …</p>
+  </main>
+  <dialog id="drawer" class="drawer" aria-labelledby="drawer-title"></dialog>
+  <dialog id="name-dialog" class="small-dialog" aria-labelledby="name-title"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
