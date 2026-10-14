@@ -81,7 +81,7 @@ Du brauchst nur den Zugang zum AWS-Konto der Praxis. Installieren musst du nicht
    git clone https://github.com/aatrmntn/feminin.git
    cd feminin/urlaubsplaner
    npm install
-   (cd infra && npx cdk bootstrap)
+   npm run bootstrap
    ```
 5. Veröffentlichen (dauert beim ersten Mal etwa 10 Minuten):
    ```bash
@@ -119,7 +119,7 @@ Einmalig vorbereiten:
 cd urlaubsplaner
 npm install
 aws sso login                     # oder ein anderes AWS-Profil
-(cd infra && npx cdk bootstrap)       # bereitet das Konto für CDK vor
+npm run bootstrap                 # bereitet das Konto für CDK vor
 ```
 
 Veröffentlichen (prüft vorher alle Tests):
