@@ -26,7 +26,7 @@ export const DEFAULT_SETTINGS = {
   openDays: FULL_WEEK,
   minimumStaffing: { frontoffice: 2 },
   defaultAllowance: 25,
-  carryOverExpires: '03-31',
+  plannerStart: '2026-01-01',
   absenceNeedsApproval: true,
   timeZone: TIME_ZONE,
   country: 'AT',
@@ -189,75 +189,149 @@ export function defaultAllowance(pattern, base = DEFAULT_SETTINGS.defaultAllowan
   return roundHalf((base * normalizePattern(pattern).length) / 5);
 }
 
-export function allowanceFor(person, year, settings = DEFAULT_SETTINGS) {
-  const override = person.allowances?.[String(year)];
+// ---------- leave account (Urlaubsjahr = Arbeitsjahr ab Eintritt) ----------
+//
+// Austrian default (UrlG): the leave year runs from the person's start date
+// (Eintritt), e.g. 2 May to 1 May. The full allowance is granted at the start of each
+// leave year. Unused days stay on the account and expire two years after the end of the
+// leave year they came from. Days are always taken from the oldest days first.
+
+export function addYears(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const target = new Date(Date.UTC(y + n, m - 1, d));
+  if (target.getUTCMonth() !== m - 1) target.setUTCDate(0); // 29 Feb → 28 Feb
+  return toIso(target);
+}
+
+// Start of the person's leave years: their start date, or the planner's start.
+export function leaveAnchor(person, settings = DEFAULT_SETTINGS) {
+  return isIsoDate(person.startDate) ? person.startDate : settings.plannerStart || DEFAULT_SETTINGS.plannerStart;
+}
+
+// The leave year that contains a date: { start, end }.
+export function leaveYearOf(anchor, iso) {
+  let k = Math.max(0, Number(iso.slice(0, 4)) - Number(anchor.slice(0, 4)) - 1);
+  while (addYears(anchor, k + 1) <= iso) k += 1;
+  const start = addYears(anchor, k);
+  return { start, end: addDays(addYears(anchor, k + 1), -1) };
+}
+
+// Allowance for the leave year starting on `yearStart`. Overrides are keyed by that date.
+export function allowanceFor(person, yearStart, settings = DEFAULT_SETTINGS) {
+  const override = person.allowances?.[yearStart];
   if (typeof override === 'number') return override;
   return defaultAllowance(person.workPattern, settings.defaultAllowance);
 }
 
-export function carryOverFor(person, year) {
-  const n = person.carryOver?.[String(year)];
-  return typeof n === 'number' ? n : 0;
-}
-
-// Balance of one person for one year.
-// entries: the person's own entries; closures: practice closures (any status, filtered here).
-// Days before today are "taken", today and later "planned". Pending shows separately.
-// Balance of one person for one year.
-// entries: the person's own entries; closures: practice closures (any status, filtered here).
-// Days before today are "taken", today and later "planned". Pending shows separately.
-// Carry-over from last year is used first and expires on settings.carryOverExpires (31 March):
-// whatever was not used by then is gone.
-export function balance({ person, year, today, entries = [], closures = [], settings = DEFAULT_SETTINGS }) {
+// Every vacation day the person used, as [{ date, amount }], from `from` on.
+// Approved vacation entries and closures that count as vacation.
+function usedDays(person, entries, closures, from, statuses = ['approved']) {
   const pattern = normalizePattern(person.workPattern);
   const closed = closureDays(closures);
-  const y = String(year);
-  const expires = `${y}-${settings.carryOverExpires || DEFAULT_SETTINGS.carryOverExpires}`;
-  let taken = 0;
-  let planned = 0;
-  let pending = 0;
-  let early = 0; // approved days up to the carry-over expiry
-
-  const book = (d, unit) => {
-    if (d < today) taken += unit; else planned += unit;
-    if (d <= expires) early += unit;
-  };
-
+  const days = [];
   for (const e of entries) {
-    if (e.kind !== 'vacation') continue;
-    if (e.status === 'pending') {
-      pending += countEntry(e, pattern, closed).byYear[y] || 0;
-    } else if (e.status === 'approved') {
-      const unit = e.half ? 0.5 : 1;
-      eachDay(e.start, e.end, (d) => {
-        if (d.slice(0, 4) === y && isVacationDay(d, pattern, closed)) book(d, unit);
-      });
-    }
+    if (e.kind !== 'vacation' || !statuses.includes(e.status)) continue;
+    const unit = e.half ? 0.5 : 1;
+    eachDay(e.start, e.end, (d) => {
+      if (d >= from && isVacationDay(d, pattern, closed)) days.push({ date: d, amount: unit });
+    });
   }
-
-  // Closures that count as vacation cost each person their own working days in them.
   for (const c of closures) {
     if (c.kind !== 'closure' || c.status !== 'approved' || !c.countsAsVacation) continue;
     eachDay(c.start, c.end, (d) => {
-      if (d.slice(0, 4) === y && pattern.includes(weekdayOf(d)) && !holidayName(d)) book(d, 1);
+      if (d >= from && pattern.includes(weekdayOf(d)) && !holidayName(d)) days.push({ date: d, amount: 1 });
     });
   }
+  return days.sort((a, b) => a.date.localeCompare(b.date));
+}
 
-  const allowance = allowanceFor(person, year, settings);
-  const carryOver = carryOverFor(person, year);
-  const carryOverExpired = today > expires ? Math.max(0, carryOver - early) : 0;
-  const total = allowance + carryOver - carryOverExpired;
+// Runs the account: grants at the start of each leave year up to `grantsUntil`, uses days
+// oldest-first, lets days expire. Starts from person.snapshot (left by the yearly clean-up)
+// when there is one. Returns the buckets and what was overdrawn.
+function simulate(person, used, grantsUntil, settings) {
+  const anchor = leaveAnchor(person, settings);
+  const snap = person.snapshot;
+  const from = snap?.asOf || anchor;
+  const buckets = (snap?.buckets || []).map((b) => ({ ...b, granted: b.days, left: b.days }));
+  let debt = snap?.debt || 0;
+  for (let k = 0; ; k++) {
+    const start = addYears(anchor, k);
+    if (start > grantsUntil) break;
+    if (start < from) continue;
+    const end = addDays(addYears(anchor, k + 1), -1);
+    let days = allowanceFor(person, start, settings);
+    if (k === 0) days += Number(person.extraDays) || 0; // correction, e.g. a shorter first period
+    buckets.push({ start, expires: addYears(end, 2), granted: days, left: days });
+  }
+  // Pay off old debt from new grants first.
+  for (const b of buckets) {
+    const pay = Math.min(debt, Math.max(0, b.left));
+    b.left -= pay;
+    debt -= pay;
+  }
+  for (const u of used) {
+    let need = u.amount;
+    for (const b of buckets) {
+      if (need <= 0) break;
+      if (b.left <= 0 || b.start > u.date || b.expires < u.date) continue;
+      const take = Math.min(need, b.left);
+      b.left -= take;
+      need -= take;
+    }
+    debt += need;
+  }
+  return { buckets, debt, from };
+}
+
+// The account as of `today`, for the leave year that contains today.
+export function balance({ person, today, entries = [], closures = [], settings = DEFAULT_SETTINGS }) {
+  const anchor = leaveAnchor(person, settings);
+  const year = leaveYearOf(anchor, today < anchor ? anchor : today);
+  const from = person.snapshot?.asOf || anchor;
+  const used = usedDays(person, entries, closures, from);
+  const { buckets } = simulate(person, used, today, settings);
+
+  const earned = buckets.reduce((n, b) => n + b.granted, 0) - (person.snapshot?.debt || 0);
+  const expired = buckets.filter((b) => b.expires < today).reduce((n, b) => n + b.left, 0);
+  const sum = (list) => list.reduce((n, u) => n + u.amount, 0);
+  const before = sum(used.filter((u) => u.date < year.start));
+  const taken = sum(used.filter((u) => u.date >= year.start && u.date < today));
+  const planned = sum(used.filter((u) => u.date >= today));
+  const pending = sum(usedDays(person, entries, [], from, ['pending']));
+  const thisYear = buckets.find((b) => b.start === year.start);
+  const allowance = thisYear ? thisYear.granted : 0;
+  const total = earned - expired - before;
+  const next = buckets
+    .filter((b) => b.expires >= today && b.left > 0 && b.start < year.start)
+    .sort((a, b) => a.expires.localeCompare(b.expires))[0];
   return {
-    year: Number(year),
+    startDate: anchor,
+    yearStart: year.start,
+    yearEnd: year.end,
     allowance,
-    carryOver,
-    carryOverExpires: expires,
-    carryOverExpired,
+    carryOver: total - allowance,
     total,
     taken,
     planned,
     pending,
     remaining: total - taken - planned,
+    expired,
+    expiring: next ? { date: next.expires, days: next.left } : null,
+  };
+}
+
+// For the yearly clean-up: the account at `cutoff`, so entries before it can be deleted
+// without changing anyone's balance.
+export function snapshotAt({ person, cutoff, entries = [], closures = [], settings = DEFAULT_SETTINGS }) {
+  const from = person.snapshot?.asOf || leaveAnchor(person, settings);
+  if (cutoff <= from) return person.snapshot || null;
+  const used = usedDays(person, entries, closures, from).filter((u) => u.date < cutoff);
+  const { buckets, debt } = simulate(person, used, addDays(cutoff, -1), settings);
+  return {
+    asOf: cutoff,
+    buckets: buckets.filter((b) => b.expires >= cutoff && b.left !== 0)
+      .map((b) => ({ start: b.start, expires: b.expires, days: b.left })),
+    debt,
   };
 }
 
@@ -491,10 +565,11 @@ export function validatePattern(pattern) {
   return { value };
 }
 
-// Changes an approver makes to a person. year applies to allowance and carryOver.
+// Changes an approver makes to a person. An allowance override applies to the leave year
+// starting on `yearStart`.
 export function validatePersonUpdate(input, person) {
   const src = input && typeof input === 'object' ? input : {};
-  const next = { ...person, allowances: { ...person.allowances }, carryOver: { ...person.carryOver } };
+  const next = { ...person, allowances: { ...person.allowances } };
   if (src.name !== undefined) {
     const r = validateName(src.name);
     if (r.error) return r;
@@ -513,24 +588,29 @@ export function validatePersonUpdate(input, person) {
     if (typeof src.active !== 'boolean') return fail('Aktiv: ja oder nein.');
     next.active = src.active;
   }
-  if (src.allowance !== undefined || src.carryOver !== undefined) {
-    const year = Number(src.year);
-    if (!Number.isInteger(year) || year < 2020 || year > 2040) return fail('Bitte wähle ein Jahr zwischen 2020 und 2040.');
-    if (src.allowance === null || src.allowance === '') {
-      delete next.allowances[year];
-    } else if (src.allowance !== undefined) {
-      if (!isHalfStep(src.allowance) || src.allowance < 0 || src.allowance > 60) {
-        return fail('Urlaubsanspruch: bitte 0 bis 60 Tage, in halben Tagen.');
-      }
-      next.allowances[year] = src.allowance;
-    }
-    if (src.carryOver !== undefined) {
-      if (!isHalfStep(src.carryOver) || src.carryOver < 0 || src.carryOver > 60) {
-        return fail('Resttage: bitte 0 bis 60 Tage, in halben Tagen.');
-      }
-      if (src.carryOver === 0) delete next.carryOver[year];
-      else next.carryOver[year] = src.carryOver;
-    }
+  if (src.startDate !== undefined) {
+    if (src.startDate === '' || src.startDate === null) delete next.startDate;
+    else if (!isIsoDate(src.startDate) || src.startDate < '2000-01-01' || src.startDate > MAX_DATE) {
+      return fail('Eintrittsdatum: bitte ein gültiges Datum.');
+    } else next.startDate = src.startDate;
+  }
+  if (src.allowance !== undefined) {
+    // Override for one leave year, keyed by the date it starts.
+    if (!isIsoDate(src.yearStart)) return fail('Es fehlt der Beginn des Urlaubsjahres. Bitte lade die Seite neu.');
+    if (src.allowance === null || src.allowance === '') delete next.allowances[src.yearStart];
+    else if (!isHalfStep(src.allowance) || src.allowance < 0 || src.allowance > 60) {
+      return fail('Urlaubsanspruch: bitte 0 bis 60 Tage, in halben Tagen.');
+    } else next.allowances[src.yearStart] = src.allowance;
+  }
+  if (src.extraDays !== undefined) {
+    const n = src.extraDays === '' || src.extraDays === null ? 0 : src.extraDays;
+    if (!isHalfStep(n) || n < -60 || n > 60) return fail('Korrektur: bitte -60 bis 60 Tage, in halben Tagen.');
+    if (n === 0) delete next.extraDays; else next.extraDays = n;
+  }
+  if (src.extraNote !== undefined) {
+    const r = text(src.extraNote, NAME_MAX, 'Der Grund der Korrektur');
+    if (r.error) return r;
+    if (r.value) next.extraNote = r.value; else delete next.extraNote;
   }
   return { value: next };
 }
@@ -548,10 +628,12 @@ export function validateNewPerson(input) {
   if (pattern.error) return pattern;
   const email = typeof src.email === 'string' ? src.email.trim() : '';
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('Die E-Mail-Adresse sieht nicht richtig aus.');
+  const startDate = typeof src.startDate === 'string' ? src.startDate : '';
+  if (startDate && !isIsoDate(startDate)) return fail('Eintrittsdatum: bitte ein gültiges Datum.');
   return {
     value: {
       username, name: name.value, role: src.role, workPattern: pattern.value, email,
-      approver: src.approver === true,
+      approver: src.approver === true, startDate: startDate || undefined,
     },
   };
 }

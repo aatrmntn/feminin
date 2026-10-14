@@ -1,6 +1,6 @@
 // Creates a login for one team member and their profile in the planner.
 //
-//   npm run user:add -- --username anna --name "Anna" --role frontoffice
+//   npm run user:add -- --username anna --name "Anna" --role frontoffice --start 2024-05-02
 //   npm run user:add -- --username clara --name "Clara" --role frontoffice --pattern mon,tue,thu
 //   npm run user:add -- --username horak --name "P. Horak" --role owner --approver --email p.horak@feminin.at
 //
@@ -15,7 +15,7 @@ import {
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { startPassword } from '../api/password.js';
-import { ROLES, WEEKDAYS, validateName } from '../api/rules.js';
+import { ROLES, WEEKDAYS, isIsoDate, validateName } from '../api/rules.js';
 
 const REGION = 'eu-central-1';
 
@@ -32,6 +32,7 @@ const { values: args } = parseArgs({
     pattern: { type: 'string', default: 'mon,tue,wed,thu,fri' },
     email: { type: 'string' },
     approver: { type: 'boolean', default: false },
+    start: { type: 'string' },
   },
 });
 
@@ -45,6 +46,7 @@ if (!workPattern.length || workPattern.some((d) => !WEEKDAYS.includes(d))) {
   fail('--pattern: Wochentage mit Komma, z. B. mon,tue,thu');
 }
 if (args.email && !/^[^@\s]+@[^@\s]+$/.test(args.email)) fail('--email sieht nicht wie eine E-Mail-Adresse aus.');
+if (args.start && !isIsoDate(args.start)) fail('--start: Eintrittsdatum als JJJJ-MM-TT, z. B. 2024-05-02');
 
 let outputs;
 try {
@@ -90,7 +92,7 @@ await db.send(new PutCommand({
     approver: args.approver,
     workPattern: WEEKDAYS.filter((d) => workPattern.includes(d)),
     allowances: {},
-    carryOver: {},
+    ...(args.start ? { startDate: args.start } : {}),
     updatedAt: new Date().toISOString(),
   },
   ConditionExpression: 'attribute_not_exists(userId)',

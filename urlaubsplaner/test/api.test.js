@@ -55,7 +55,8 @@ test('book a week and a half day; balance shows them as pending', async () => {
   assert.equal(o.entries[0].note, 'Wien');
   assert.equal(o.holidays.length, 13);
   assert.deepEqual(o.balance, {
-    year: 2026, allowance: 25, carryOver: 0, carryOverExpires: '2026-03-31', carryOverExpired: 0, total: 25, taken: 0, planned: 0, pending: 5.5, remaining: 25,
+    startDate: '2026-01-01', yearStart: '2026-01-01', yearEnd: '2026-12-31',
+    allowance: 25, carryOver: 0, total: 25, taken: 0, planned: 0, pending: 5.5, remaining: 25, expired: 0, expiring: null,
   });
   assert.equal(o.me.canApprove, false);
 });
@@ -176,16 +177,15 @@ test('check: days and what is left, without writing', async () => {
   const { call, db } = setup([approvedFuture]);
   const res = await call(ANNA, 'POST', '/api/check', { kind: 'vacation', start: '2026-12-28', end: '2027-01-08' });
   const { warnings, warningText, ...rest } = res.body.item;
-  assert.deepEqual(rest, {
-    ok: true, days: 8, byYear: { 2026: 4, 2027: 4 }, remainingAfter: { 2026: 18, 2027: 21 },
-  });
+  // 25 days, 3 already planned in December, 8 more now
+  assert.deepEqual(rest, { ok: true, days: 8, remainingAfter: 14 });
   assert.equal(warnings.length, 8, 'with only two people in the front office, every day of Anna\'s is short');
   const err = await call(ANNA, 'POST', '/api/check', { kind: 'vacation', start: '2026-12-22' });
   assert.equal(err.body.item.ok, false);
   assert.match(err.body.item.error, /überschneidet/);
   // editing the entry itself does not clash with itself, and its own days are not counted twice
   const edit = await call(ANNA, 'POST', '/api/check', { id: approvedFuture.id, kind: 'vacation', start: '2026-12-21', end: '2026-12-22' });
-  assert.deepEqual(edit.body.item.remainingAfter, { 2026: 23 });
+  assert.equal(edit.body.item.remainingAfter, 23);
   assert.equal(db.audit.length, 0);
 });
 

@@ -43,6 +43,7 @@ async function load(ctx) {
     peopleSection(people, ctx, reload),
     closuresSection(overview.closures, ctx, reload),
     practiceSection(settings, reload),
+    importSection(reload),
   );
 }
 
@@ -90,7 +91,7 @@ function formActions(error, saveLabel = 'Speichern') {
   ];
 }
 
-const days = (n) => `${num(n)} ${n === 1 ? 'Tag' : 'Tage'}`;
+const short = (iso) => iso.split('-').reverse().join('.');
 const pattern = (keys) => keys.map((k) => WEEKDAYS[WD_KEYS.indexOf(k)].slice(0, 2)).join(', ');
 
 // ---------- people ----------
@@ -101,8 +102,11 @@ function peopleSection(data, ctx, reload) {
       p.approver ? h('span', { class: 'badge approved' }, 'darf genehmigen') : null),
     h('td', {}, p.roleLabel),
     h('td', {}, pattern(p.workPattern)),
-    h('td', {}, num(p.allowanceOverride ?? p.defaultAllowance), p.allowanceOverride == null ? h('span', { class: 'hint' }, ' (auto)') : null),
-    h('td', {}, num(p.carryOver), p.balance.carryOverExpired ? h('span', { class: 'hint' }, ` (${num(p.balance.carryOverExpired)} verfallen)`) : null),
+    h('td', {}, p.startDate ? short(p.startDate) : h('span', { class: 'hint' }, 'fehlt')),
+    h('td', {}, `${short(p.balance.yearStart)}–${short(p.balance.yearEnd)}`),
+    h('td', {}, num(p.balance.allowance), p.allowanceOverride == null ? null : h('span', { class: 'hint' }, ' (fix)'),
+      p.balance.carryOver > 0 ? h('span', { class: 'hint' }, ` + ${num(p.balance.carryOver)} Rest`) : null,
+      p.balance.carryOver < 0 ? h('span', { class: 'hint' }, ` − ${num(-p.balance.carryOver)} überzogen`) : null),
     h('td', {}, num(p.balance.remaining), p.balance.pending ? h('span', { class: 'hint' }, ` (${num(p.balance.pending)} beantragt)`) : null),
     h('td', {}, h('button', { class: 'link', type: 'button', onclick: () => editPerson(p, data, ctx, reload), 'aria-label': `${p.name} bearbeiten` }, 'Bearbeiten'))));
 
@@ -114,7 +118,7 @@ function peopleSection(data, ctx, reload) {
       h('table', { class: 'people' },
         h('thead', {}, h('tr', {},
           h('th', { scope: 'col' }, 'Name'), h('th', { scope: 'col' }, 'Bereich'), h('th', { scope: 'col' }, 'Arbeitstage'),
-          h('th', { scope: 'col' }, `Anspruch ${data.year}`), h('th', { scope: 'col' }, 'Resttage'),
+          h('th', { scope: 'col' }, 'Eintritt'), h('th', { scope: 'col' }, 'Urlaubsjahr'), h('th', { scope: 'col' }, 'Anspruch'),
           h('th', { scope: 'col' }, 'Übrig'), h('th', { scope: 'col' }, h('span', { class: 'sr-only' }, 'Aktionen')))),
         h('tbody', {}, rows))));
 }
@@ -128,18 +132,21 @@ function editPerson(p, data, ctx, reload) {
   const error = h('p', { class: 'error', role: 'alert' });
   const name = h('input', { id: 'p-name', maxlength: '80', value: p.name });
   const role = roleSelect('p-role', data.roles, p.role);
+  const start = h('input', { id: 'p-start', type: 'date', min: '2000-01-01', max: '2040-12-31', value: p.startDate });
   const allowance = numberInput('p-allowance', p.allowanceOverride, `automatisch: ${num(p.defaultAllowance)}`);
-  const carry = numberInput('p-carry', p.carryOver || '', '0');
+  const extra = h('input', { id: 'p-extra', type: 'number', min: '-60', max: '60', step: '0.5', inputmode: 'decimal', value: p.extraDays || '' });
+  const extraNote = h('input', { id: 'p-extra-note', maxlength: '80', value: p.extraNote, placeholder: 'z. B. Mai 2026 mit 20 Stunden' });
+  const range = `${short(p.balance.yearStart)}–${short(p.balance.yearEnd)}`;
   const form = h('form', { class: 'dialog-form', novalidate: true },
     field('p-name', 'Name', name),
     field('p-role', 'Bereich', role),
     weekdayBoxes('p-days', p.workPattern),
-    field('p-allowance', `Urlaubsanspruch ${data.year}`, allowance, '(leer lassen = automatisch nach Arbeitstagen)'),
-    field('p-carry', `Resttage aus ${data.year - 1}`, carry, `(verfallen am 31. März ${data.year})`),
-    p.suggestedCarryOver == null ? null : h('button', {
-      class: 'link', type: 'button',
-      onclick: () => { carry.value = String(p.suggestedCarryOver); },
-    }, `Vorschlag übernehmen: ${days(p.suggestedCarryOver)} waren Ende ${data.year - 1} übrig`),
+    field('p-start', 'Eintrittsdatum', start, '(hier beginnt jedes Urlaubsjahr)'),
+    field('p-allowance', `Urlaubsanspruch im Urlaubsjahr ${range}`, allowance, '(leer lassen = automatisch nach Arbeitstagen)'),
+    h('div', { class: 'row' },
+      field('p-extra', 'Korrektur in Tagen', extra, '(+ oder −)'),
+      field('p-extra-note', 'Grund', extraNote)),
+    h('p', { class: 'hint' }, 'Die Korrektur zählt einmal, im ersten Urlaubsjahr. Zum Beispiel für einen kurzen Zeitraum vor dem eigentlichen Urlaubsjahr.'),
     checkbox('p-approver', 'Darf Urlaub genehmigen', p.approver),
     checkbox('p-active', 'Aktiv', p.active, '(deaktiviert = kann sich nicht mehr anmelden, Daten bleiben)'),
     ...formActions(error));
@@ -154,9 +161,11 @@ function editPerson(p, data, ctx, reload) {
       name: name.value,
       role: role.value,
       workPattern: checked(form, 'p-days'),
-      year: data.year,
+      startDate: start.value,
+      yearStart: p.balance.yearStart,
       allowance: allowance.value === '' ? null : Number(allowance.value),
-      carryOver: carry.value === '' ? 0 : Number(carry.value),
+      extraDays: extra.value === '' ? 0 : Number(extra.value),
+      extraNote: extraNote.value,
     };
     if (!self) {
       body.active = form.querySelector('#p-active').checked;
@@ -180,11 +189,13 @@ function addPerson(data, reload) {
   const name = h('input', { id: 'n-name', maxlength: '80', autocomplete: 'off' });
   const role = roleSelect('n-role', data.roles, 'frontoffice');
   const email = h('input', { id: 'n-email', type: 'email', autocomplete: 'off' });
+  const start = h('input', { id: 'n-start', type: 'date', min: '2000-01-01', max: '2040-12-31' });
   const form = h('form', { class: 'dialog-form', novalidate: true },
     field('n-name', 'Name', name, '(so sehen ihn die Kolleg:innen)'),
     field('n-user', 'Benutzername', username, '(zum Anmelden, z. B. der Nachname, klein geschrieben)'),
     field('n-role', 'Bereich', role),
     weekdayBoxes('n-days', ['mon', 'tue', 'wed', 'thu', 'fri']),
+    field('n-start', 'Eintrittsdatum', start, '(hier beginnt jedes Urlaubsjahr)'),
     field('n-email', 'Eigene E-Mail-Adresse', email, '(freiwillig, keine gemeinsame Adresse wie office@)'),
     checkbox('n-approver', 'Darf Urlaub genehmigen', false),
     ...formActions(error, 'Zugang anlegen'));
@@ -197,6 +208,7 @@ function addPerson(data, reload) {
         name: name.value,
         role: role.value,
         workPattern: checked(form, 'n-days'),
+        startDate: start.value,
         email: email.value,
         approver: form.querySelector('#n-approver').checked,
       });
@@ -326,4 +338,52 @@ function practiceSection(s, reload) {
     }
   });
   return h('section', { class: 'card' }, h('h2', {}, 'Ordination'), form);
+}
+
+// ---------- taking over an existing leave plan ----------
+
+function importSection(reload) {
+  const text = h('textarea', { id: 'imp-text', rows: '6', spellcheck: 'false', placeholder: '{ "people": [ … ], "entries": [ … ] }' });
+  const result = h('div', { class: 'import-result', 'aria-live': 'polite' });
+  const run = (dryRun) => async () => {
+    result.replaceChildren();
+    let body;
+    try {
+      body = JSON.parse(text.value);
+    } catch {
+      result.append(h('p', { class: 'error' }, 'Der Text ist nicht vollständig. Bitte genau so einfügen, wie Claude ihn geschickt hat.'));
+      return;
+    }
+    try {
+      const r = await api('POST', '/api/import', { ...body, dryRun });
+      const block = (title, items, cls = '') => (items.length
+        ? h('div', { class: cls }, h('h3', {}, `${title} (${items.length})`), h('ul', {}, items.map((i) => h('li', {}, i))))
+        : null);
+      const nothing = !r.people.length && !r.closures.length && !r.entries.length;
+      result.append(...[
+        h('p', { class: r.problems.length ? 'notice' : 'summary' }, dryRun
+          ? (r.problems.length ? 'Geprüft. Ein paar Zeilen gehen nicht, siehe unten. Der Rest kann übernommen werden.' : 'Geprüft, alles in Ordnung. Noch ist nichts gespeichert.')
+          : (nothing ? 'Nichts Neues zu übernehmen.' : 'Übernommen. Die Einträge sind bestätigt.')),
+        block('Probleme', r.problems, 'problems'),
+        block(dryRun ? 'Personen, die angepasst werden' : 'Angepasste Personen', r.people),
+        block(dryRun ? 'Betriebsurlaub, der eingetragen wird' : 'Eingetragener Betriebsurlaub', r.closures),
+        block(dryRun ? 'Urlaube, die eingetragen werden' : 'Eingetragene Urlaube', r.entries),
+        block('Schon vorhanden, wird übersprungen', r.skipped),
+      ].filter(Boolean));
+      if (!dryRun) {
+        showToast('Urlaubsplanung übernommen.');
+        reload();
+      }
+    } catch (err) {
+      result.append(h('p', { class: 'error', role: 'alert' }, err.message));
+    }
+  };
+  return h('section', { class: 'card import' },
+    h('h2', {}, 'Bestehende Urlaubsplanung übernehmen'),
+    h('p', { class: 'hint' }, 'Füge hier den Text ein, den Claude aus eurer Excel-Liste gemacht hat. Zuerst „Prüfen“: Dann siehst du, was passiert, und es wird noch nichts gespeichert. Doppelte Einträge werden übersprungen.'),
+    h('div', { class: 'field' }, h('label', { for: 'imp-text' }, 'Text aus der Liste'), text),
+    h('div', { class: 'actions' },
+      h('button', { class: 'button', type: 'button', onclick: run(true) }, 'Prüfen'),
+      h('button', { class: 'button primary', type: 'button', onclick: run(false) }, 'Übernehmen')),
+    result);
 }

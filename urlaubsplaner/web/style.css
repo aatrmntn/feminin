@@ -440,3 +440,10 @@ input[type="number"] {
 .timeline.can-pick td[data-user] { cursor: pointer; }
 .timeline.can-pick td[data-user]:hover { outline: 2px solid var(--accent-2); outline-offset: -2px; }
 .who { display: grid; gap: .5rem; padding: .75rem 1rem; background: var(--surface-2); border-radius: 8px; }
+.balance-wrap { display: grid; gap: .5rem; }
+.import { display: grid; gap: .75rem; }
+.import textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85rem; }
+.import-result { display: grid; gap: .75rem; }
+.import-result h3 { font-size: 1rem; margin-bottom: .25rem; }
+.import-result ul { margin: 0; padding-left: 1.2rem; display: grid; gap: .15rem; }
+.import-result .problems { color: var(--danger); }

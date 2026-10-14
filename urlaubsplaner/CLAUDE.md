@@ -25,8 +25,10 @@ patient discovery page and has nothing to do with it.
    No minimum for the other roles.
 4. **Opening days:** Monday to Friday. Mo 7–19, Tue–Thu 8–19, Fri 7–17. No afternoon
    closures, so every weekday is a full opening day.
-5. **Allowance:** 25 days on a 5-day week, scaled for part-time. Unused days carry over
-   to the next year and expire on 31 March.
+5. **Allowance:** 25 days on a 5-day week, scaled for part-time. **Leave year = working
+   year from the start date (Eintritt)**, e.g. 2 May to 1 May, as in the practice's own
+   spreadsheet (and the Austrian default). Unused days stay and expire two years after the
+   end of their leave year (changed on 15 Oct 2026; the first build used calendar years).
 6. **Language:** German interface only. Address users with "du" inside the team app.
 7. **Login:** Not everyone has their own email. Known addresses: office@feminin.at,
    ordination@feminin.at (shared), a.tramontana@feminin.at, p.horak@feminin.at
@@ -57,9 +59,20 @@ patient discovery page and has nothing to do with it.
 - Closures are entries with kind `closure`, created by approvers only (/api/closures),
   approved at once. `reason` holds their label. Closure days never count as personal
   vacation days; with `countsAsVacation` each person loses their own working days in them.
-- Carry-over is used first and expires on 31 March: after that, only the part used by then
-  counts (`carryOverExpired` in the balance). The settings page suggests last year's
-  remaining days, but only if last year has entries in the planner.
+- Leave account (rules.balance): person.startDate anchors the leave years (missing →
+  settings.plannerStart, 2026-01-01). The full allowance is granted at the start of each
+  leave year; overrides in person.allowances are keyed by the leave year's start date.
+  person.extraDays (+/-) is added once to the first leave year (e.g. a short period on
+  other hours). Days are used oldest first; leftovers expire two years after the end of
+  their leave year. The balance shows the current leave year, the rest from earlier years,
+  taken, planned (all approved future days), pending and remaining.
+- The yearly clean-up first stores person.snapshot (the account at the cutoff), then
+  deletes older entries; balances do not change (tested).
+- In past years 24 and 31 December were free (stored as closures without vacation). In
+  2026 only 24 December is.
+- POST /api/import (approvers, dry run by default) takes over an existing plan: person
+  start dates/patterns, closures, and entries saved as approved. Duplicates are skipped.
+  The import text with real names is never committed.
 - The first owner is created with `npm run user:add`; everyone else in Einstellungen. The
   API Lambda may create, enable/disable users and change their group in the user pool.
   People keep an `approver` flag in sync with the Cognito group.

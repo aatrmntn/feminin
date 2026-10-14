@@ -148,26 +148,33 @@ async function pickFromTeam({ userId, date, entryId }) {
   }
 }
 
+function carryText(b) {
+  if (b.carryOver > 0) return `${num(b.allowance)} + ${num(b.carryOver)} Rest aus Vorjahren`;
+  if (b.carryOver < 0) return `${num(b.allowance)}, davon ${num(-b.carryOver)} schon in Vorjahren genommen`;
+  return 'in diesem Urlaubsjahr';
+}
+
+// The account for the current leave year (from the start date, e.g. 2 May to 1 May).
 function renderBalance(b) {
   const box = (label, value, sub, cls = '') => h('div', { class: `stat ${cls}` },
     h('span', { class: 'stat-label' }, label),
     h('span', { class: 'stat-value' }, num(value)),
     sub ? h('span', { class: 'stat-sub' }, sub) : null);
-  return h('section', { class: 'balance', 'aria-label': `Urlaubskonto ${b.year}` },
-    box(`Anspruch ${b.year}`, b.total, carryText(b)),
-    box('Genommen', b.taken, 'bis gestern'),
-    box('Geplant', b.planned, 'ab heute, bestätigt'),
-    box('Beantragt', b.pending, 'wartet auf Bestätigung', b.pending ? 'is-pending' : ''),
-    box('Übrig', b.remaining, b.pending ? `${num(b.remaining - b.pending)} wenn alles bestätigt wird` : 'Tage', 'is-main'));
-}
-
-function carryText(b) {
-  if (!b.carryOver) return 'Tage';
-  const until = longDate(b.carryOverExpires, false);
-  if (b.carryOverExpired) {
-    return `${num(b.allowance)} + ${num(b.carryOver - b.carryOverExpired)} aus dem Vorjahr (${num(b.carryOverExpired)} am ${until} verfallen)`;
+  const short = (iso) => iso.split('-').reverse().join('.');
+  const range = `${short(b.yearStart)}–${short(b.yearEnd)}`;
+  const section = h('section', { class: 'balance-wrap', 'aria-label': `Urlaubskonto, Urlaubsjahr ${range}` },
+    h('p', { class: 'hint' }, `Urlaubsjahr ${range}`),
+    h('div', { class: 'balance' },
+      box('Anspruch', b.total, carryText(b)),
+      box('Genommen', b.taken, 'in diesem Urlaubsjahr'),
+      box('Geplant', b.planned, 'ab heute, bestätigt'),
+      box('Beantragt', b.pending, 'wartet auf Bestätigung', b.pending ? 'is-pending' : ''),
+      box('Übrig', b.remaining, b.pending ? `${num(b.remaining - b.pending)} wenn alles bestätigt wird` : 'Tage', 'is-main')));
+  if (b.expiring) {
+    section.append(h('p', { class: 'notice' },
+      `${days(b.expiring.days)} aus früheren Urlaubsjahren ${b.expiring.days === 1 ? 'verfällt' : 'verfallen'} am ${longDate(b.expiring.date)}, wenn du sie bis dahin nicht nimmst.`));
   }
-  return `${num(b.allowance)} + ${num(b.carryOver)} aus dem Vorjahr, nutzbar bis ${until}`;
+  return section;
 }
 
 function renderToolbar() {
@@ -671,14 +678,8 @@ function summaryText(v, res) {
   if (v.kind !== 'vacation') {
     return 'Zählt nicht als Urlaub. Für die Mindestbesetzung zählt es trotzdem als abwesend.';
   }
-  const years = Object.keys(res.byYear);
   const what = `${num(res.days)} ${res.days === 1 ? 'Urlaubstag' : 'Urlaubstage'}`;
-  if (years.length === 1) {
-    return `${what}. Danach bleiben ${whom(v)} ${days(res.remainingAfter[years[0]])} für ${years[0]}.`;
-  }
-  const split = years.map((y) => `${num(res.byYear[y])} in ${y}`).join(', ');
-  const left = years.map((y) => `${days(res.remainingAfter[y])} für ${y}`).join(' und ');
-  return `${what} (${split}). Danach bleiben ${whom(v)} ${left}.`;
+  return `${what}. Danach bleiben ${whom(v)} ${days(res.remainingAfter)}.`;
 }
 
 // ---------- display name ----------

@@ -10,7 +10,7 @@ import { createMemoryDb } from '../dev/memory-db.js';
 const FULL = r.FULL_WEEK;
 const people = [
   { userId: 'fo1', username: 'frida', name: 'Frida', role: 'frontoffice', active: true, workPattern: FULL },
-  { userId: 'bo1', username: 'ida', name: 'Ida', role: 'backoffice', active: true, workPattern: ['mon', 'tue', 'wed', 'thu'], carryOver: { 2026: 2 } },
+  { userId: 'bo1', username: 'ida', name: 'Ida', role: 'backoffice', active: true, workPattern: ['mon', 'tue', 'wed', 'thu'], startDate: '2026-03-09' },
   { userId: 'ow1', username: 'olga', name: 'Olga', role: 'owner', active: true, approver: true, workPattern: FULL },
   { userId: 'ow2', username: 'paul', name: 'Paul', role: 'owner', active: true, approver: true, workPattern: FULL },
 ];
@@ -51,10 +51,10 @@ test('closures: only approvers create them; they count as vacation when set so',
 
   const o = (await call(FO, 'GET', '/api/overview')).body.item;
   assert.equal(o.closures.length, 1);
-  // 24, 28, 29, 30, 31 Dec are working days for a full week (25, 26 holidays)
-  assert.equal(o.balance.planned, 5);
+  // 24, 28, 29, 30, 31 Dec and 4, 5 Jan are working days for a full week (25, 26 Dec, 1, 6 Jan holidays)
+  assert.equal(o.balance.planned, 7);
   const ida = (await call(BO, 'GET', '/api/overview')).body.item;
-  assert.equal(ida.balance.planned, 5, 'Ida works Mon–Thu: 24, 28, 29, 30, 31 Dec are all hers');
+  assert.equal(ida.balance.planned, 7, 'Ida works Mon–Thu: the same seven days are all hers');
   // nobody can book vacation on closure days alone
   const book = await call(FO, 'POST', '/api/entries', { kind: 'vacation', start: '2026-12-28', end: '2026-12-31' });
   assert.match(book.body.error, /nichts zu buchen/);
@@ -100,37 +100,45 @@ test('settings: approvers only; validated; used for staffing', async () => {
 
 // ---------- people ----------
 
-test('people: list with balances and carry-over suggestion, approvers only', async () => {
-  const { call } = setup({ entries: [entry('fo1', '2025-08-04', '2025-08-08')] });
+test('people: list with leave year and balance, approvers only', async () => {
+  const { call } = setup({ entries: [entry('bo1', '2026-10-05', '2026-10-08')] });
   assert.equal((await call(FO, 'GET', '/api/people')).status, 403);
-  const list = (await call(OW, 'GET', '/api/people', undefined, { year: '2026' })).body.item.people;
-  const frida = list.find((p) => p.userId === 'fo1');
-  assert.equal(frida.suggestedCarryOver, 20, '25 in 2025 minus 5 taken');
-  assert.equal(frida.defaultAllowance, 25);
+  const list = (await call(OW, 'GET', '/api/people')).body.item.people;
   const ida = list.find((p) => p.userId === 'bo1');
-  assert.equal(ida.suggestedCarryOver, null, 'no entries last year: no suggestion');
+  assert.equal(ida.startDate, '2026-03-09');
   assert.equal(ida.defaultAllowance, 20);
-  assert.equal(ida.carryOver, 2);
-  assert.equal(ida.balance.carryOverExpired, 2, 'not used by 31 March');
+  assert.equal(ida.balance.yearStart, '2026-03-09');
+  assert.equal(ida.balance.yearEnd, '2027-03-08');
+  assert.equal(ida.balance.remaining, 16);
+  const frida = list.find((p) => p.userId === 'fo1');
+  assert.equal(frida.startDate, '', 'no start date: leave year = calendar year from the planner start');
+  assert.equal(frida.balance.yearStart, '2026-01-01');
 });
 
-test('people: change pattern, allowance and carry-over; validation', async () => {
+test('people: change start date, pattern, allowance and correction; validation', async () => {
   const { call, db } = setup();
   const path = '/api/people/fo1';
   assert.equal((await call(FO, 'PUT', path, { name: 'X' })).status, 403);
   assert.equal((await call(OW, 'PUT', '/api/people/nobody', { name: 'X' })).status, 404);
   assert.equal((await call(OW, 'PUT', path, { workPattern: [] })).status, 400);
-  assert.equal((await call(OW, 'PUT', path, { year: 2026, allowance: 25.3 })).status, 400);
-  const res = await call(OW, 'PUT', path, { workPattern: ['mon', 'tue', 'wed', 'thu'], year: 2026, allowance: 22, carryOver: 1.5 });
+  assert.equal((await call(OW, 'PUT', path, { startDate: '2026-02-30' })).status, 400);
+  assert.equal((await call(OW, 'PUT', path, { yearStart: '2026-06-01', allowance: 25.3 })).status, 400);
+  assert.equal((await call(OW, 'PUT', path, { extraDays: 0.3 })).status, 400);
+  const res = await call(OW, 'PUT', path, { startDate: '2026-06-01', extraDays: 1, extraNote: 'Mai 2026 (20 Std.)' });
   assert.equal(res.status, 200);
-  assert.equal(res.body.item.allowanceOverride, 22);
-  assert.equal(res.body.item.balance.total, 22, 'carry-over 1.5 expired on 31 March, today is October');
+  assert.equal(res.body.item.balance.yearStart, '2026-06-01');
+  assert.equal(res.body.item.balance.total, 26);
+  const changed = await call(OW, 'PUT', path, { workPattern: ['mon', 'tue', 'wed', 'thu'], yearStart: '2026-06-01', allowance: 22 });
+  assert.equal(changed.body.item.allowanceOverride, 22);
+  assert.equal(changed.body.item.balance.total, 23, '22 plus the correction of 1');
   const saved = await db.getPerson('fo1');
   assert.deepEqual(saved.workPattern, ['mon', 'tue', 'wed', 'thu']);
+  assert.equal(saved.extraNote, 'Mai 2026 (20 Std.)');
   // back to automatic
-  const auto = await call(OW, 'PUT', path, { year: 2026, allowance: null });
+  const auto = await call(OW, 'PUT', path, { yearStart: '2026-06-01', allowance: null, extraDays: 0 });
   assert.equal(auto.body.item.allowanceOverride, null);
-  assert.equal(db.audit.filter((a) => a.action === 'person-update').length, 2);
+  assert.equal(auto.body.item.balance.total, 20);
+  assert.equal(db.audit.filter((a) => a.action === 'person-update').length, 3);
 });
 
 test('people: deactivate and approver rights go through the login system; not for yourself', async () => {
@@ -261,4 +269,57 @@ test('retention: keeps this year and the two before, deletes older entries and a
   assert.ok(await db.getEntry(old.id));
   assert.ok(db.audit.some((a) => a.id === 'a2'));
   assert.ok(db.audit.some((a) => a.action === 'retention' && a.actorId === 'system'));
+});
+
+test('retention: balances stay the same after old entries are deleted', async () => {
+  const entries = [
+    entry('fo1', '2024-08-05'), entry('fo1', '2024-12-27', '2025-01-09'), entry('fo1', '2025-09-15', '2025-09-26'),
+    entry('fo1', '2026-04-22', '2026-04-30'), entry('fo1', '2027-01-19', '2027-02-11'),
+    entry('ow1', '2024-12-31', '2024-12-31', { kind: 'closure', reason: 'Silvester' }),
+  ];
+  const { app, db } = setup({ entries, now: '2027-01-02T02:00:00Z' });
+  await db.putPerson({ ...(await db.getPerson('fo1')), startDate: '2024-05-02' });
+  const before = (await app.handle({ method: 'GET', path: '/api/overview', query: {}, user: FO })).body.item.balance;
+  const res = await app.runRetention();
+  assert.equal(res.cutoff, '2025-01-01');
+  assert.equal(res.deletedEntries, 2, 'the August 2024 entry and the 2024 closure');
+  assert.ok((await db.getPerson('fo1')).snapshot);
+  const after = (await app.handle({ method: 'GET', path: '/api/overview', query: {}, user: FO })).body.item.balance;
+  assert.deepEqual(after, before);
+});
+
+test('import: dry run writes nothing; then people, closures and approved entries; twice is harmless', async () => {
+  const { call, db } = setup();
+  const body = {
+    people: [{ username: 'frida', startDate: '2024-05-02' }, { username: 'nobody', startDate: '2024-01-01' }],
+    closures: [{ start: '2024-12-31', label: 'Silvester' }],
+    entries: [
+      { username: 'frida', start: '2024-12-27', end: '2025-01-09', note: 'alt' },
+      { username: 'frida', start: '2026-10-30' },
+      { username: 'frida', start: '2026-10-30' },
+      { username: 'frida', start: '2026-10-31' },
+      { username: 'ida', start: '2026-10-05', end: '2026-10-08' },
+    ],
+  };
+  assert.equal((await call(FO, 'POST', '/api/import', body)).status, 403);
+  const dry = (await call(OW, 'POST', '/api/import', body)).body.item;
+  assert.equal(dry.dryRun, true);
+  assert.equal(dry.entries.length, 3);
+  assert.match(dry.entries[0], /Frida, 27\. Dezember 2024 bis 9\. Jänner 2025 \(7 Tage\)/, 'Silvester 2024 is free');
+  assert.equal(dry.skipped.length, 1, 'the second 30 October');
+  assert.equal(dry.problems.length, 2, 'unknown person and a Saturday');
+  assert.equal(db.audit.length, 0);
+
+  const real = (await call(OW, 'POST', '/api/import', { ...body, dryRun: false })).body.item;
+  assert.equal(real.entries.length, 3);
+  assert.equal((await db.getPerson('fo1')).startDate, '2024-05-02');
+  const own = await db.listUserEntries('fo1', '2024-01-01', '2026-12-31');
+  assert.ok(own.every((e) => e.status === 'approved'));
+  const o = (await call(FO, 'GET', '/api/overview')).body.item;
+  assert.equal(o.balance.yearStart, '2026-05-02');
+  assert.equal(o.balance.remaining, 75 - 7 - 1);
+
+  const again = (await call(OW, 'POST', '/api/import', { ...body, dryRun: false })).body.item;
+  assert.equal(again.entries.length, 0);
+  assert.equal(again.closures.length, 0);
 });

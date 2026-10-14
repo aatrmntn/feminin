@@ -95,49 +95,89 @@ test('allowance: 25 days on 5 days, scaled for part-time, overrides win', () => 
   assert.equal(r.allowanceFor({ workPattern: FULL, allowances: { 2025: 30 } }, 2026), 25);
 });
 
-test('balance: taken before today, planned from today, pending separate', () => {
-  const person = { workPattern: FULL, carryOver: { 2026: 3 } };
-  const entries = [
-    { kind: 'vacation', status: 'approved', start: '2026-02-16', end: '2026-02-17' }, // 2 taken, uses carry-over
-    { kind: 'vacation', status: 'approved', start: '2026-08-03', end: '2026-08-07' }, // 5 taken
-    { kind: 'vacation', status: 'approved', start: '2026-10-12', end: '2026-10-16' }, // 2 taken, 3 planned
-    { kind: 'vacation', status: 'approved', start: '2026-12-28', end: '2027-01-08' }, // 4 planned in 2026
-    { kind: 'vacation', status: 'pending', start: '2026-11-02', end: '2026-11-03' }, // 2 pending
-    { kind: 'vacation', status: 'declined', start: '2026-11-09', end: '2026-11-13' }, // nothing
-    { kind: 'absence', status: 'approved', start: '2026-09-07', end: '2026-09-11' }, // nothing
-  ];
-  // 3 carried over, 2 used by 31 March, 1 expired
-  assert.deepEqual(r.balance({ person, year: 2026, today: '2026-10-14', entries }), {
-    year: 2026, allowance: 25, carryOver: 3, carryOverExpires: '2026-03-31', carryOverExpired: 1,
-    total: 27, taken: 9, planned: 7, pending: 2, remaining: 11,
+// Shapes taken from the practice's own spreadsheet (names left out).
+const xmas = ['2024-12-24', '2024-12-31', '2025-12-24', '2025-12-31', '2026-12-24']
+  .map((d) => ({ kind: 'closure', status: 'approved', start: d, end: d }));
+const vac = (list, status = 'approved') => list.map(([start, end = start]) => ({ kind: 'vacation', status, start, end }));
+
+test('leave year runs from the start date; 29 February rolls to 28 February', () => {
+  assert.deepEqual(r.leaveYearOf('2024-05-02', '2026-10-14'), { start: '2026-05-02', end: '2027-05-01' });
+  assert.deepEqual(r.leaveYearOf('2024-05-02', '2026-05-01'), { start: '2025-05-02', end: '2026-05-01' });
+  assert.deepEqual(r.leaveYearOf('2024-05-02', '2024-05-02'), { start: '2024-05-02', end: '2025-05-01' });
+  assert.equal(r.addYears('2024-02-29', 1), '2025-02-28');
+  assert.equal(r.leaveAnchor({}), '2026-01-01');
+});
+
+test('account over three leave years matches the spreadsheet', () => {
+  const person = { workPattern: FULL, startDate: '2024-05-02' };
+  const entries = vac([
+    ['2024-08-05'], ['2024-12-27', '2025-01-09'], ['2025-02-07'], ['2025-03-31', '2025-04-01'], ['2025-06-20'],
+    ['2025-06-10', '2025-06-13'], ['2025-09-15', '2025-09-26'], ['2025-11-17', '2025-11-19'], ['2026-04-22', '2026-04-30'],
+    ['2026-08-25', '2026-08-28'], ['2026-10-30'], ['2027-01-19', '2027-02-11'],
+  ]);
+  const b = r.balance({ person, today: '2026-10-14', entries, closures: xmas });
+  assert.deepEqual(b, {
+    startDate: '2024-05-02', yearStart: '2026-05-02', yearEnd: '2027-05-01',
+    allowance: 25, carryOver: 14, total: 39, taken: 4, planned: 19, pending: 0, remaining: 16,
+    expired: 0, expiring: null,
   });
-  const next = r.balance({ person, year: 2027, today: '2026-10-14', entries });
-  assert.equal(next.planned, 4);
-  assert.equal(next.remaining, 21);
 });
 
-test('balance: carry-over counts fully until 31 March, then only what was used', () => {
-  const person = { workPattern: FULL, carryOver: { 2026: 5 } };
-  const entries = [{ kind: 'vacation', status: 'approved', start: '2026-03-30', end: '2026-04-03' }]; // 2 before, 3 after
-  const before = r.balance({ person, year: 2026, today: '2026-02-01', entries });
-  assert.equal(before.total, 30);
-  assert.equal(before.carryOverExpired, 0);
-  assert.equal(r.balance({ person, year: 2026, today: '2026-03-31', entries }).carryOverExpired, 0);
-  const after = r.balance({ person, year: 2026, today: '2026-04-01', entries });
-  assert.equal(after.carryOverExpired, 3);
-  assert.equal(after.total, 27);
-  assert.equal(after.remaining, 22);
+test('account: part-time pattern, correction for a short first period, pending separate', () => {
+  const sophie = { workPattern: ['mon', 'tue', 'wed', 'thu'], startDate: '2026-03-09' };
+  const entries = vac([['2026-10-05', '2026-10-08'], ['2026-12-07'], ['2026-12-09', '2026-12-10'], ['2027-01-07'], ['2027-01-18', '2027-01-19'], ['2027-02-04', '2027-02-15']]);
+  const b = r.balance({ person: sophie, today: '2026-10-14', entries, closures: xmas });
+  assert.equal(b.allowance, 20);
+  assert.equal(b.taken, 4);
+  assert.equal(b.planned, 12);
+  assert.equal(b.remaining, 4);
+  const vero = { workPattern: FULL, startDate: '2026-06-01', extraDays: 1 };
+  const v = r.balance({ person: vero, today: '2026-10-14', entries: [...vac([['2026-06-30', '2026-07-03'], ['2026-09-21', '2026-09-25']]), ...vac([['2026-11-02']], 'pending')] });
+  assert.equal(v.total, 26);
+  assert.equal(v.remaining, 17);
+  assert.equal(v.pending, 1);
 });
 
-test('balance: closures that count as vacation cost the person their own working days', () => {
-  const person = { workPattern: ['mon', 'tue', 'thu'] };
-  const closures = [{
-    kind: 'closure', status: 'approved', countsAsVacation: true, start: '2026-12-28', end: '2027-01-01',
-  }];
-  const b = r.balance({ person, year: 2026, today: '2026-10-14', entries: [], closures });
+test('account: unused days expire two years after the end of their leave year, oldest used first', () => {
+  const person = { workPattern: FULL, startDate: '2024-01-01' };
+  const entries = vac([['2024-03-04', '2024-03-08']]); // 5 of 25 used in the first year
+  const before = r.balance({ person, today: '2026-12-31', entries });
+  assert.equal(before.expired, 0);
+  assert.deepEqual(before.expiring, { date: '2026-12-31', days: 20 });
+  assert.equal(before.remaining, 70);
+  const after = r.balance({ person, today: '2027-01-01', entries });
+  assert.equal(after.expired, 20, 'the 20 left from 2024 are gone on 1 January 2027');
+  assert.equal(after.remaining, 75, '25 + 25 + 25 + 25 earned, 5 used, 20 expired');
+  // using days in 2026 takes them from 2024 first, so nothing of 2024 expires
+  // 20 working days in June 2026 (4 June is Corpus Christi)
+  const used = r.balance({ person, today: '2027-01-01', entries: [...entries, ...vac([['2026-06-01', '2026-06-29']])] });
+  assert.equal(used.expired, 0);
+  assert.equal(used.remaining, 75);
+});
+
+test('account: closures that count as vacation cost each person their own working days', () => {
+  const person = { workPattern: ['mon', 'tue', 'thu'], startDate: '2026-01-01' };
+  const closures = [{ kind: 'closure', status: 'approved', countsAsVacation: true, start: '2026-12-28', end: '2027-01-01' }];
+  const b = r.balance({ person, today: '2026-10-14', closures });
   assert.equal(b.allowance, 15);
   assert.equal(b.planned, 3); // Mon 28, Tue 29, Thu 31
   assert.equal(b.remaining, 12);
+});
+
+test('snapshot: deleting old entries after a snapshot leaves every balance unchanged', () => {
+  const person = { workPattern: FULL, startDate: '2024-05-02' };
+  const entries = vac([['2024-08-05'], ['2024-12-27', '2025-01-09'], ['2025-02-07'], ['2025-09-15', '2025-09-26'], ['2026-04-22', '2026-04-30'], ['2027-01-19', '2027-02-11']]);
+  for (const cutoff of ['2025-01-01', '2026-01-01', '2026-05-02']) {
+    const snapshot = r.snapshotAt({ person, cutoff, entries, closures: xmas });
+    const kept = entries.filter((e) => e.end >= cutoff);
+    const keptClosures = xmas.filter((c) => c.end >= cutoff);
+    for (const today of ['2026-10-14', '2027-06-01', '2028-05-02']) {
+      const full = r.balance({ person, today, entries, closures: xmas });
+      const compact = r.balance({ person: { ...person, snapshot }, today, entries: kept, closures: keptClosures });
+      assert.equal(compact.remaining, full.remaining, `cutoff ${cutoff}, today ${today}`);
+      assert.equal(compact.expired, full.expired, `expired, cutoff ${cutoff}, today ${today}`);
+    }
+  }
 });
 
 test('validation: dates, span, half days, note', () => {

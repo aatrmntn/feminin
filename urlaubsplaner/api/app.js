@@ -58,6 +58,7 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
     if (req.method === 'GET' && path === '/api/people') return listPeople(req);
     if (req.method === 'POST' && path === '/api/people') return addPerson(req);
     if (personPath && req.method === 'PUT') return updatePerson(req, personPath[1]);
+    if (req.method === 'POST' && path === '/api/import') return importData(req);
     if (req.method === 'GET' && path === '/api/export.ics') return exportIcs(req);
     if (req.method === 'GET' && path === '/api/export.csv') return exportCsv(req);
     if (req.method === 'PUT' && path === '/api/me/feed') return createFeed(req);
@@ -92,6 +93,19 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
     }
     const seen = new Set();
     return all.filter((e) => e.start <= end && e.end >= start && !seen.has(e.id) && seen.add(e.id));
+  }
+
+  // A person's leave account as of today: all their entries since their account starts.
+  async function accountFor(person, settings, today, { excludeId = null } = {}) {
+    const from = person.snapshot?.asOf || rules.leaveAnchor(person, settings);
+    const to = rules.addYears(today, 3);
+    const [own, around] = await Promise.all([
+      db.listUserEntries(person.userId, from, to),
+      entriesAround(from < to ? from : to, to),
+    ]);
+    const entries = own.filter((e) => e.kind !== 'closure' && e.id !== excludeId);
+    const closures = around.filter((e) => e.kind === 'closure');
+    return { balance: rules.balance({ person, today, entries, closures, settings }), entries, closures };
   }
 
   // Closures around a date range (closures are practice-wide).
@@ -308,7 +322,7 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
         holidays: rules.publicHolidays(year),
         closures: presentClosures(closures, settings),
         entries: entries.map((e) => present(e, me.person, closures, { withNote: true })),
-        balance: rules.balance({ person: me.person, year, today, entries, closures, settings }),
+        balance: (await accountFor(me.person, settings, today)).balance,
         reasons: rules.REASONS,
         openRequests: me.isApprover ? await countOpenRequests(me, today) : 0,
         // Approvers can enter leave for others: who is there to pick from.
@@ -342,18 +356,14 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
     if (error) return { item: { ok: false, error } };
 
     const pattern = rules.normalizePattern(owner.workPattern);
-    const { total, byYear } = value.kind === 'vacation'
-      ? rules.countEntry(value, pattern, rules.closureDays(closures))
-      : { total: 0, byYear: {} };
-    const after = {};
-    for (const y of Object.keys(byYear)) {
-      const entries = (await db.listUserEntries(owner.userId, `${y}-01-01`, `${y}-12-31`))
-        .filter((e) => e.kind === 'vacation' && e.id !== id);
-      const b = rules.balance({ person: owner, year: Number(y), today, entries, closures, settings });
-      after[y] = b.remaining - b.pending - byYear[y];
-    }
+    const days = value.kind === 'vacation' ? rules.countEntry(value, pattern, rules.closureDays(closures)).total : 0;
+    const { balance } = await accountFor(owner, settings, today, { excludeId: id });
     const { warnings, warningText } = await warningsFor({ ...value, id }, owner, settings);
-    return { item: { ok: true, days: total, byYear, remainingAfter: after, warnings, warningText } };
+    return {
+      item: {
+        ok: true, days, remainingAfter: balance.remaining - balance.pending - days, warnings, warningText,
+      },
+    };
   }
 
   // Whose entry this is: the caller, or (approvers only) another active person.
@@ -634,7 +644,6 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
       minimumStaffing: settings.minimumStaffing,
       defaultAllowance: settings.defaultAllowance,
       absenceNeedsApproval: settings.absenceNeedsApproval,
-      carryOverExpires: settings.carryOverExpires,
       roles: rules.ROLES,
     };
   }
@@ -662,23 +671,8 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
     return { id: randomUUID(), at: now().toISOString(), actorId: me.person.userId, action, subjectUserId };
   }
 
-  async function personBalance(person, year, today, settings) {
-    const [own, yearEntries] = await Promise.all([
-      db.listUserEntries(person.userId, `${year}-01-01`, `${year}-12-31`),
-      db.listYearEntries(year),
-    ]);
-    const closures = yearEntries.filter((e) => e.kind === 'closure');
-    const entries = own.filter((e) => e.kind !== 'closure');
-    return { ...rules.balance({ person, year, today, entries, closures, settings }), tracked: entries.length > 0 };
-  }
-
-  async function presentPerson(person, year, today, settings) {
-    const [b, last] = await Promise.all([
-      personBalance(person, year, today, settings),
-      // What was left at the end of last year: a suggestion for the carry-over,
-      // but only if last year was kept in the planner at all.
-      personBalance(person, year - 1, `${year}-01-01`, settings),
-    ]);
+  async function presentPerson(person, today, settings) {
+    const b = (await accountFor(person, settings, today)).balance;
     return {
       userId: person.userId,
       username: person.username || '',
@@ -689,11 +683,12 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
       active: person.active !== false,
       approver: !!person.approver,
       workPattern: rules.normalizePattern(person.workPattern),
+      startDate: person.startDate || '',
       defaultAllowance: rules.defaultAllowance(person.workPattern, settings.defaultAllowance),
-      allowanceOverride: typeof person.allowances?.[year] === 'number' ? person.allowances[year] : null,
-      carryOver: rules.carryOverFor(person, year),
-      suggestedCarryOver: last.tracked ? Math.max(0, last.remaining) : null,
-      balance: (({ tracked, ...rest }) => rest)(b),
+      allowanceOverride: typeof person.allowances?.[b.yearStart] === 'number' ? person.allowances[b.yearStart] : null,
+      extraDays: Number(person.extraDays) || 0,
+      extraNote: person.extraNote || '',
+      balance: b,
     };
   }
 
@@ -707,7 +702,7 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
       .sort((a, b) => (a.active === false) - (b.active === false)
         || roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role) || a.name.localeCompare(b.name, 'de'));
     const items = [];
-    for (const p of people) items.push(await presentPerson(p, year, today, settings));
+    for (const p of people) items.push(await presentPerson(p, today, settings));
     return { item: { year, today, roles: rules.ROLES, people: items } };
   }
 
@@ -740,14 +735,14 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
       approver: value.approver,
       workPattern: value.workPattern,
       allowances: {},
-      carryOver: {},
+      startDate: value.startDate,
       updatedAt: now().toISOString(),
     };
     await db.putPerson(person, simpleAudit(me, 'person-create', userId));
     const { settings, today } = await context();
     return {
       created: true,
-      item: { person: await presentPerson(person, Number(today.slice(0, 4)), today, settings), startPassword },
+      item: { person: await presentPerson(person, today, settings), startPassword },
     };
   }
 
@@ -775,8 +770,112 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
     value.updatedAt = now().toISOString();
     await db.putPerson(value, simpleAudit(me, 'person-update', userId));
     const { settings, today } = await context();
-    const year = parseYear(input.year, today);
-    return { item: await presentPerson(value, year, today, settings) };
+    return { item: await presentPerson(value, today, settings) };
+  }
+
+  // ----- taking over existing leave plans (approvers) -----
+
+  // Body: { dryRun, people: [{ username, startDate, workPattern, extraDays, extraNote }],
+  //         closures: [{ start, end, label, countsAsVacation }],
+  //         entries: [{ username, kind, reason, start, end, half, note }] }
+  // Entries are saved as approved. Nothing is written when dryRun is true (the default).
+  // Rows that already exist are skipped, so running it twice does no harm.
+  async function importData(req) {
+    const me = await caller(req);
+    requireApprover(me);
+    const input = readBody(req);
+    const dryRun = input.dryRun !== false;
+    const list = (key) => (Array.isArray(input[key]) ? input[key] : []);
+    if (list('people').length + list('closures').length + list('entries').length > 1000) {
+      throw new HttpError(400, 'Bitte höchstens 1000 Zeilen auf einmal übernehmen.');
+    }
+    const at = now().toISOString();
+    const report = { dryRun, people: [], closures: [], entries: [], skipped: [], problems: [] };
+    const byUsername = new Map((await db.listPeople()).map((p) => [p.username, p]));
+
+    for (const row of list('people')) {
+      const username = String(row?.username || '').toLowerCase();
+      const person = byUsername.get(username);
+      if (!person) {
+        report.problems.push(`„${username}“ gibt es im Planer nicht. Bitte zuerst unter Team anlegen.`);
+        continue;
+      }
+      const changes = {};
+      for (const k of ['startDate', 'workPattern', 'extraDays', 'extraNote']) if (row[k] !== undefined) changes[k] = row[k];
+      const { value, error } = rules.validatePersonUpdate(changes, person);
+      if (error) {
+        report.problems.push(`${person.name}: ${error}`);
+        continue;
+      }
+      value.updatedAt = at;
+      report.people.push(`${person.name}: Eintritt ${value.startDate ? rules.formatDay(value.startDate) : '–'}, `
+        + `${rules.normalizePattern(value.workPattern).length} Tage pro Woche`
+        + `${value.extraDays ? `, Korrektur ${value.extraDays > 0 ? '+' : ''}${value.extraDays}` : ''}`);
+      if (!dryRun) await db.putPerson(value, simpleAudit(me, 'person-import', person.userId));
+      byUsername.set(username, value);
+    }
+
+    const rows = list('entries');
+    const dates = [...list('closures'), ...rows].flatMap((r) => [r?.start, r?.end || r?.start]).filter(rules.isIsoDate).sort();
+    const known = dates.length ? (await entriesAround(dates[0], dates.at(-1))).filter((e) => e.kind === 'closure') : [];
+    const closures = [...known];
+
+    for (const row of list('closures')) {
+      const { value, error } = rules.validateClosure(row);
+      const label = rules.isIsoDate(row?.start) ? rules.formatRange(row.start, row.end || row.start) : 'Betriebsurlaub';
+      if (error) {
+        report.problems.push(`Betriebsurlaub ${label}: ${error}`);
+        continue;
+      }
+      if (closures.some((c) => c.start === value.start && c.end === value.end)) {
+        report.skipped.push(`Betriebsurlaub ${label} ist schon eingetragen.`);
+        continue;
+      }
+      const entry = { id: randomUUID(), userId: me.person.userId, ...value, note: '', status: 'approved', rev: 1, createdAt: at, updatedAt: at };
+      closures.push(entry);
+      report.closures.push(`${label}${value.reason ? ` (${value.reason})` : ''}`);
+      if (!dryRun) await db.createEntry(entry, auditRecord(me, 'import', entry));
+    }
+
+    const added = new Map(); // userId → entries created in this run
+    for (const row of rows) {
+      const username = String(row?.username || '').toLowerCase();
+      const owner = byUsername.get(username);
+      if (!owner) {
+        report.problems.push(`„${username}“ gibt es im Planer nicht. Bitte zuerst unter Team anlegen.`);
+        continue;
+      }
+      const { value, error } = rules.validateEntry({ kind: 'vacation', ...row }, { pattern: rules.normalizePattern(owner.workPattern), closures });
+      const label = rules.isIsoDate(row?.start) ? rules.formatRange(row.start, row.end || row.start) : '?';
+      if (error) {
+        report.problems.push(`${owner.name}, ${label}: ${error}`);
+        continue;
+      }
+      const existing = [
+        ...(await db.listUserEntries(owner.userId, value.start, value.end)).filter((e) => e.kind !== 'closure'),
+        ...(added.get(owner.userId) || []),
+      ].filter((e) => rules.ACTIVE_STATUSES.includes(e.status));
+      if (existing.some((e) => e.start === value.start && e.end === value.end && (e.half || '') === value.half && e.kind === value.kind)) {
+        report.skipped.push(`${owner.name}, ${label} ist schon eingetragen.`);
+        continue;
+      }
+      const clash = rules.validateEntry(value, { existing, pattern: rules.normalizePattern(owner.workPattern), closures });
+      if (clash.error) {
+        report.problems.push(`${owner.name}, ${label}: ${clash.error}`);
+        continue;
+      }
+      const entry = {
+        id: randomUUID(), userId: owner.userId, ...value, substitute: '', status: 'approved',
+        decidedBy: me.person.userId, decidedAt: at, rev: 1, createdAt: at, updatedAt: at,
+      };
+      if (!added.has(owner.userId)) added.set(owner.userId, []);
+      added.get(owner.userId).push(entry);
+      const days = value.kind === 'vacation'
+        ? rules.countEntry(value, rules.normalizePattern(owner.workPattern), rules.closureDays(closures)).total : 0;
+      report.entries.push(`${owner.name}, ${label}${value.kind === 'vacation' ? ` (${String(days).replace('.', ',')} ${days === 1 ? 'Tag' : 'Tage'})` : ''}`);
+      if (!dryRun) await db.createEntry(entry, auditRecord(me, 'import', entry));
+    }
+    return { item: report };
   }
 
   // ----- export and calendar feed -----
@@ -913,6 +1012,18 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
     const year = Number(today.slice(0, 4));
     const cutoff = `${year - 2}-01-01`;
     const system = { person: { userId: 'system' } };
+    const { settings } = await context();
+    // First keep each person's account at the cutoff, so deleting old entries changes no balance.
+    const allClosures = (await entriesAround('2019-01-01', `${year + 3}-12-31`)).filter((e) => e.kind === 'closure');
+    for (const person of await db.listPeople()) {
+      const from = person.snapshot?.asOf || rules.leaveAnchor(person, settings);
+      if (cutoff <= from) continue;
+      const own = (await db.listUserEntries(person.userId, from, `${year + 3}-12-31`)).filter((e) => e.kind !== 'closure');
+      const snapshot = rules.snapshotAt({ person, cutoff, entries: own, closures: allClosures, settings });
+      await db.putPerson({ ...person, snapshot }, {
+        id: randomUUID(), at: now().toISOString(), actorId: 'system', action: 'snapshot', subjectUserId: person.userId,
+      });
+    }
     let deletedEntries = 0;
     const seen = new Set();
     for (let y = 2019; y <= year - 3; y++) {
