@@ -4,7 +4,8 @@ import { addDays } from '../api/rules.js';
 
 const copy = (x) => (x == null ? x : structuredClone(x));
 
-export function createMemoryDb({ people = [], entries = [], settings = {} } = {}) {
+export function createMemoryDb({ people = [], entries = [], settings: initialSettings = {} } = {}) {
+  const settings = copy(initialSettings);
   const P = new Map(people.map((p) => [p.userId, copy(p)]));
   const E = new Map(entries.map((e) => [e.id, copy(e)]));
   const audit = [];
@@ -13,8 +14,21 @@ export function createMemoryDb({ people = [], entries = [], settings = {} } = {}
     audit,
     async getPerson(userId) { return copy(P.get(userId) || null); },
     async listPeople() { return [...P.values()].map(copy); },
-    async putPerson(person) { P.set(person.userId, copy(person)); },
+    async putPerson(person, record) {
+      P.set(person.userId, copy(person));
+      if (record) audit.push(copy(record));
+    },
     async getSettings() { return copy(settings); },
+    async putSettings(next, record) {
+      Object.assign(settings, copy(next));
+      audit.push(copy(record));
+    },
+    async purgeAudit(before) {
+      const keep = audit.filter((a) => a.at >= before);
+      const removed = audit.length - keep.length;
+      audit.splice(0, audit.length, ...keep);
+      return removed;
+    },
     async getEntry(id) { return copy(E.get(id) || null); },
     async listUserEntries(userId, from, to) {
       const earliest = addDays(from, -92);

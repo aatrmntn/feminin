@@ -31,6 +31,22 @@ Der ganze Plan steht in `PLAN.md`, die Antworten auf die offenen Fragen in `CLAU
 - **E-Mail:** Bei einem neuen Antrag bekommen die Besitzer:innen eine Mail, ohne Notiz.
   Das Frontoffice hat keine eigenen Adressen und sieht die Entscheidung im Planer.
 
+## Neu in Phase 3
+
+- **Betriebsurlaub** (Einstellungen): Tage, an denen die ganze Ordination zu ist, z. B.
+  Weihnachten. Wahlweise „zählt als Urlaub“: Dann wird allen an ihren Arbeitstagen Urlaub
+  abgezogen. Mit Vertretung und einem **Aushang zum Ausdrucken** für Tür und Website.
+- **Vertretung** auch bei Abwesenheiten der Besitzer:innen, mit eigenem Aushang.
+- **Einstellungen:** Personen anlegen, bearbeiten, deaktivieren; Arbeitstage,
+  Urlaubsanspruch, Resttage aus dem Vorjahr (mit Vorschlag), Öffnungstage,
+  Mindestbesetzung, ob Fortbildungen bestätigt werden müssen.
+- **Resttage** aus dem Vorjahr werden zuerst verbraucht und verfallen am 31. März.
+- **Mitnehmen:** eigene Einträge als Kalenderdatei (.ics) oder Excel-Tabelle (.csv), und
+  ein **Kalender-Abo** fürs Handy (iPhone, Google, Outlook) mit allen bestätigten
+  Abwesenheiten im Team, ohne Notizen. Der Link lässt sich jederzeit erneuern oder löschen.
+- **Aufräumen:** Jedes Jahr am 2. Jänner werden Einträge gelöscht, die älter als das
+  laufende Jahr plus zwei Jahre sind (Datenschutz).
+
 ## Selbst ausprobieren, ohne AWS
 
 ```bash
@@ -119,17 +135,18 @@ Falls die Login-Adresse `feminin-urlaub` schon vergeben ist: `-c domainPrefix=fe
 
 ## Zugänge anlegen
 
-Einmal pro Person, im selben Fenster und im Ordner `feminin/urlaubsplaner`:
+**Nur den ersten Zugang** (deinen eigenen) legst du im CloudShell-Fenster an, im Ordner
+`feminin/urlaubsplaner`:
 
 ```bash
-npm run user:add -- --username anna --name "Anna" --role frontoffice
-npm run user:add -- --username clara --name "Clara" --role frontoffice --pattern mon,tue,thu
-npm run user:add -- --username eva --name "Eva" --role backoffice
 npm run user:add -- --username tramontana --name "A. Tramontana" --role owner --approver --email a.tramontana@feminin.at
-npm run user:add -- --username horak --name "P. Horak" --role owner --approver --email p.horak@feminin.at
 ```
 
-Das Werkzeug zeigt ein Start-Passwort an. Gib es der Person persönlich. Beim ersten
+Alle anderen legst du danach direkt im Planer an: **Einstellungen → Team → + Person
+hinzufügen**. Das geht auch mit dem Befehl oben (`--role frontoffice`, `backoffice` oder
+`owner`, Teilzeit mit z. B. `--pattern mon,tue,wed,thu`).
+
+Der Planer oder das Werkzeug zeigt ein Start-Passwort an. Gib es der Person persönlich. Beim ersten
 Anmelden wählt sie ein eigenes Passwort und verbindet eine Authenticator-App, zum Beispiel
 Google Authenticator oder Microsoft Authenticator.
 
@@ -143,14 +160,15 @@ Die Praxisleitung setzt dann in der AWS-Konsole unter Cognito ein neues Start-Pa
 | `api/rules.js` | Alle Regeln: Feiertage, Urlaubstage zählen, Prüfungen |
 | `api/app.js` | Die Schnittstelle: wer darf was, speichern, Protokoll |
 | `api/handler.js`, `api/db-dynamo.js` | Anbindung an AWS Lambda und DynamoDB |
+| `api/ical.js`, `api/csv.js` | Kalenderdatei und Excel-Tabelle |
+| `api/mail.js`, `api/directory-cognito.js` | E-Mail (SES) und Login-System (Cognito) |
 | `web/` | Die Seite im Browser (HTML, CSS, JavaScript, ohne Framework) |
 | `infra/` | Bauplan für AWS (CDK) |
 | `dev/` | Lokale Testversion mit Daten im Speicher |
 | `scripts/add-user.js` | Zugänge anlegen |
 | `test/` | Automatische Tests |
 
-## Nächste Schritte
+## Später vielleicht (Phase 4)
 
-- **Phase 3:** Betriebsurlaub mit Aushang für die Tür, Einstellungen und Personen in der
-  App verwalten, Resttage aus dem Vorjahr (verfallen am 31. März), Kalender-Abo für
-  Outlook, Google und iPhone, jährliches Löschen alter Daten
+- Krankenstände, nur nach Rücksprache mit der Datenschutzberatung
+- Ein Assistent, den man fragen kann: „Wer ist in der Woche nach Ostern weg?“

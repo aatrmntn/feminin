@@ -35,7 +35,9 @@ const seed = (n, userId, start, end, extra = {}) => ({
 });
 
 const db = createMemoryDb({
-  people: team.map(({ groups, ...p }) => ({ ...p, username: p.name.toLowerCase(), active: true })),
+  people: team.map(({ groups, ...p }) => ({
+    ...p, username: p.name.toLowerCase().replace(/\s+/g, ''), active: true, approver: groups.includes('approver'),
+  })),
   entries: [
     seed(1, 'dev-fo1', `${year}-02-16`, `${year}-02-20`, { note: 'Skiurlaub' }),
     seed(2, 'dev-fo1', `${year}-07-27`, `${year}-08-07`),
@@ -47,13 +49,26 @@ const db = createMemoryDb({
     seed(8, 'dev-bo1', addDays(today, 1), addDays(today, 2), { kind: 'absence', reason: 'training' }),
     seed(9, 'dev-ow2', addDays(today, 5), addDays(today, 5), { half: 'am' }),
     seed(10, 'dev-fo2', today, today),
+    seed(11, 'dev-ow1', `${year}-12-24`, `${Number(year) + 1}-01-06`, {
+      kind: 'closure', reason: 'Weihnachten', countsAsVacation: true, substitute: 'Ordination Dr. Muster, Musterstraße 1, Tel. 01 234 56 78',
+    }),
   ],
 });
 // Emails are only printed here, never sent.
 const notify = async ({ to, subject, text }) => {
   console.log(`\n[E-Mail, Testversion] an ${to.join(', ')}: ${subject}\n${text}\n`);
 };
-const app = createApp({ db, notify, appUrl: `http://localhost:${PORT}/` });
+// A stand-in for the login system: people added in the app can be picked on the start page.
+let added = 0;
+const directory = {
+  async createUser() {
+    added += 1;
+    return { userId: `dev-new${added}`, startPassword: 'Testversion-Start1' };
+  },
+  async setEnabled() {},
+  async setApprover() {},
+};
+const app = createApp({ db, notify, directory, appUrl: `http://localhost:${PORT}/` });
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -84,24 +99,34 @@ createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
     if (url.pathname === '/config.json') {
-      const users = team.map((p) => ({ id: p.userId, name: p.name, label: LABELS[p.role] }));
+      const users = (await db.listPeople()).filter((p) => p.active !== false)
+        .map((p) => ({ id: p.userId, name: p.name, label: LABELS[p.role] }));
       return send(res, 200, TYPES['.json'], JSON.stringify({ mode: 'dev', users }));
     }
-    if (url.pathname.startsWith('/api/')) {
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/feed/')) {
       let body;
       try {
         body = await readJson(req);
       } catch {
         return send(res, 400, TYPES['.json'], JSON.stringify({ error: 'Die Anfrage konnte nicht gelesen werden.' }));
       }
-      const person = team.find((p) => p.userId === req.headers['x-dev-user']);
+      const person = req.headers['x-dev-user'] ? await db.getPerson(String(req.headers['x-dev-user'])) : null;
       const out = await app.handle({
         method: req.method,
         path: url.pathname,
         query: Object.fromEntries(url.searchParams),
         body,
-        user: person ? { id: person.userId, groups: person.groups } : null,
+        user: person ? { id: person.userId, groups: [person.approver ? 'approver' : 'staff'] } : null,
       });
+      if (out.raw !== undefined) {
+        res.writeHead(out.status, {
+          'content-type': out.contentType,
+          'cache-control': 'no-store',
+          ...(out.filename ? { 'content-disposition': `attachment; filename="${out.filename}"` } : {}),
+          ...SECURITY,
+        });
+        return res.end(out.raw);
+      }
       return send(res, out.status, TYPES['.json'], JSON.stringify(out.body));
     }
     const file = normalize(join(WEB, url.pathname === '/' ? 'index.html' : url.pathname));

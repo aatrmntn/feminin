@@ -3,11 +3,13 @@
 import { createApp } from './app.js';
 import { createDynamoDb } from './db-dynamo.js';
 import { userFromClaims } from './claims.js';
+import { createCognitoDirectory } from './directory-cognito.js';
 import { createMailer } from './mail.js';
 
 const app = createApp({
   db: createDynamoDb(),
   notify: process.env.MAIL_FROM ? createMailer(process.env.MAIL_FROM) : null,
+  directory: process.env.USER_POOL_ID ? createCognitoDirectory(process.env.USER_POOL_ID) : null,
   appUrl: process.env.APP_URL || '',
 });
 
@@ -31,7 +33,17 @@ export async function handler(event) {
     body,
     user: userFromClaims(event.requestContext?.authorizer?.jwt?.claims),
   });
+  if (res.raw !== undefined) {
+    const headers = { 'content-type': res.contentType, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
+    if (res.filename) headers['content-disposition'] = `attachment; filename="${res.filename}"`;
+    return { statusCode: res.status, headers, body: res.raw };
+  }
   return respond(res.status, res.body);
+}
+
+// Yearly schedule (EventBridge): delete what is older than the current year plus two.
+export async function retention() {
+  return app.runRetention();
 }
 
 function parseBody(event) {

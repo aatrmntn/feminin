@@ -98,6 +98,7 @@ test('allowance: 25 days on 5 days, scaled for part-time, overrides win', () => 
 test('balance: taken before today, planned from today, pending separate', () => {
   const person = { workPattern: FULL, carryOver: { 2026: 3 } };
   const entries = [
+    { kind: 'vacation', status: 'approved', start: '2026-02-16', end: '2026-02-17' }, // 2 taken, uses carry-over
     { kind: 'vacation', status: 'approved', start: '2026-08-03', end: '2026-08-07' }, // 5 taken
     { kind: 'vacation', status: 'approved', start: '2026-10-12', end: '2026-10-16' }, // 2 taken, 3 planned
     { kind: 'vacation', status: 'approved', start: '2026-12-28', end: '2027-01-08' }, // 4 planned in 2026
@@ -105,12 +106,27 @@ test('balance: taken before today, planned from today, pending separate', () => 
     { kind: 'vacation', status: 'declined', start: '2026-11-09', end: '2026-11-13' }, // nothing
     { kind: 'absence', status: 'approved', start: '2026-09-07', end: '2026-09-11' }, // nothing
   ];
+  // 3 carried over, 2 used by 31 March, 1 expired
   assert.deepEqual(r.balance({ person, year: 2026, today: '2026-10-14', entries }), {
-    year: 2026, allowance: 25, carryOver: 3, total: 28, taken: 7, planned: 7, pending: 2, remaining: 14,
+    year: 2026, allowance: 25, carryOver: 3, carryOverExpires: '2026-03-31', carryOverExpired: 1,
+    total: 27, taken: 9, planned: 7, pending: 2, remaining: 11,
   });
   const next = r.balance({ person, year: 2027, today: '2026-10-14', entries });
   assert.equal(next.planned, 4);
   assert.equal(next.remaining, 21);
+});
+
+test('balance: carry-over counts fully until 31 March, then only what was used', () => {
+  const person = { workPattern: FULL, carryOver: { 2026: 5 } };
+  const entries = [{ kind: 'vacation', status: 'approved', start: '2026-03-30', end: '2026-04-03' }]; // 2 before, 3 after
+  const before = r.balance({ person, year: 2026, today: '2026-02-01', entries });
+  assert.equal(before.total, 30);
+  assert.equal(before.carryOverExpired, 0);
+  assert.equal(r.balance({ person, year: 2026, today: '2026-03-31', entries }).carryOverExpired, 0);
+  const after = r.balance({ person, year: 2026, today: '2026-04-01', entries });
+  assert.equal(after.carryOverExpired, 3);
+  assert.equal(after.total, 27);
+  assert.equal(after.remaining, 22);
 });
 
 test('balance: closures that count as vacation cost the person their own working days', () => {

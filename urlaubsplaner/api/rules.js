@@ -203,24 +203,35 @@ export function carryOverFor(person, year) {
 // Balance of one person for one year.
 // entries: the person's own entries; closures: practice closures (any status, filtered here).
 // Days before today are "taken", today and later "planned". Pending shows separately.
+// Balance of one person for one year.
+// entries: the person's own entries; closures: practice closures (any status, filtered here).
+// Days before today are "taken", today and later "planned". Pending shows separately.
+// Carry-over from last year is used first and expires on settings.carryOverExpires (31 March):
+// whatever was not used by then is gone.
 export function balance({ person, year, today, entries = [], closures = [], settings = DEFAULT_SETTINGS }) {
   const pattern = normalizePattern(person.workPattern);
   const closed = closureDays(closures);
   const y = String(year);
+  const expires = `${y}-${settings.carryOverExpires || DEFAULT_SETTINGS.carryOverExpires}`;
   let taken = 0;
   let planned = 0;
   let pending = 0;
+  let early = 0; // approved days up to the carry-over expiry
+
+  const book = (d, unit) => {
+    if (d < today) taken += unit; else planned += unit;
+    if (d <= expires) early += unit;
+  };
 
   for (const e of entries) {
     if (e.kind !== 'vacation') continue;
-    const days = countEntry(e, pattern, closed).byYear[y] || 0;
-    if (!days) continue;
     if (e.status === 'pending') {
-      pending += days;
+      pending += countEntry(e, pattern, closed).byYear[y] || 0;
     } else if (e.status === 'approved') {
-      const split = splitTakenPlanned(e, pattern, closed, y, today);
-      taken += split.taken;
-      planned += split.planned;
+      const unit = e.half ? 0.5 : 1;
+      eachDay(e.start, e.end, (d) => {
+        if (d.slice(0, 4) === y && isVacationDay(d, pattern, closed)) book(d, unit);
+      });
     }
   }
 
@@ -228,36 +239,26 @@ export function balance({ person, year, today, entries = [], closures = [], sett
   for (const c of closures) {
     if (c.kind !== 'closure' || c.status !== 'approved' || !c.countsAsVacation) continue;
     eachDay(c.start, c.end, (d) => {
-      if (d.slice(0, 4) !== y) return;
-      if (!pattern.includes(weekdayOf(d)) || holidayName(d)) return;
-      if (d < today) taken += 1; else planned += 1;
+      if (d.slice(0, 4) === y && pattern.includes(weekdayOf(d)) && !holidayName(d)) book(d, 1);
     });
   }
 
   const allowance = allowanceFor(person, year, settings);
   const carryOver = carryOverFor(person, year);
-  const total = allowance + carryOver;
+  const carryOverExpired = today > expires ? Math.max(0, carryOver - early) : 0;
+  const total = allowance + carryOver - carryOverExpired;
   return {
     year: Number(year),
     allowance,
     carryOver,
+    carryOverExpires: expires,
+    carryOverExpired,
     total,
     taken,
     planned,
     pending,
     remaining: total - taken - planned,
   };
-}
-
-function splitTakenPlanned(entry, pattern, closed, year, today) {
-  const unit = entry.half ? 0.5 : 1;
-  let taken = 0;
-  let planned = 0;
-  eachDay(entry.start, entry.end, (d) => {
-    if (d.slice(0, 4) !== year || !isVacationDay(d, pattern, closed)) return;
-    if (d < today) taken += unit; else planned += unit;
-  });
-  return { taken, planned };
 }
 
 // ---------- minimum staffing ----------
@@ -409,4 +410,148 @@ function describeDates(e) {
 
 function fail(error) {
   return { error };
+}
+
+// ---------- practice closures, settings, people (approvers) ----------
+
+const isHalfStep = (n) => typeof n === 'number' && Number.isFinite(n) && Number.isInteger(n * 2);
+
+function text(value, max, label) {
+  const v = typeof value === 'string' ? value.trim() : '';
+  if (v.length > max) return { error: `${label} darf höchstens ${max} Zeichen haben.` };
+  return { value: v };
+}
+
+// First opening day after a date, for "Ab … sind wir wieder für Sie da".
+export function nextOpenDay(iso, settings = DEFAULT_SETTINGS, closed = new Set()) {
+  let d = addDays(iso, 1);
+  for (let i = 0; i < 400; i++, d = addDays(d, 1)) if (isOpenDay(d, settings, closed)) return d;
+  return d;
+}
+
+export function validateClosure(input) {
+  const src = input && typeof input === 'object' ? input : {};
+  const start = typeof src.start === 'string' ? src.start.trim() : '';
+  const end = typeof src.end === 'string' && src.end.trim() ? src.end.trim() : start;
+  if (!isIsoDate(start)) return fail('Bitte gib ein gültiges Startdatum an.');
+  if (!isIsoDate(end)) return fail('Bitte gib ein gültiges Enddatum an.');
+  if (start < MIN_DATE || end > MAX_DATE) return fail('Daten müssen zwischen 2020 und 2040 liegen.');
+  if (end < start) return fail('Das Enddatum liegt vor dem Startdatum.');
+  if (spanDays(start, end) > MAX_SPAN_DAYS) {
+    return fail(`Ein Betriebsurlaub darf höchstens ${MAX_SPAN_DAYS} Tage lang sein.`);
+  }
+  const label = text(src.label, NAME_MAX, 'Die Bezeichnung');
+  if (label.error) return label;
+  const substitute = text(src.substitute, NOTE_MAX, 'Die Vertretung');
+  if (substitute.error) return substitute;
+  return {
+    value: {
+      kind: 'closure', reason: label.value, start, end, half: '',
+      countsAsVacation: src.countsAsVacation === true, substitute: substitute.value,
+    },
+  };
+}
+
+export function validateSubstitute(value) {
+  return text(value, NOTE_MAX, 'Die Vertretung');
+}
+
+export function validateSettings(input, current = DEFAULT_SETTINGS) {
+  const src = input && typeof input === 'object' ? input : {};
+  const openDays = Array.isArray(src.openDays) ? WEEKDAYS.filter((d) => src.openDays.includes(d)) : current.openDays;
+  if (!openDays.length) return fail('Bitte wähle mindestens einen Öffnungstag.');
+  const minimumStaffing = {};
+  const minIn = src.minimumStaffing && typeof src.minimumStaffing === 'object' ? src.minimumStaffing : current.minimumStaffing;
+  for (const role of Object.keys(ROLES)) {
+    const n = minIn[role] ?? 0;
+    if (!Number.isInteger(n) || n < 0 || n > 20) return fail('Mindestbesetzung: bitte eine ganze Zahl von 0 bis 20.');
+    if (n > 0) minimumStaffing[role] = n;
+  }
+  const defaultAllowance = src.defaultAllowance ?? current.defaultAllowance;
+  if (!isHalfStep(defaultAllowance) || defaultAllowance < 0 || defaultAllowance > 60) {
+    return fail('Urlaubsanspruch: bitte 0 bis 60 Tage, in halben Tagen.');
+  }
+  const practice = text(src.practiceName ?? current.practiceName, NAME_MAX, 'Der Praxisname');
+  if (practice.error) return practice;
+  return {
+    value: {
+      practiceName: practice.value || DEFAULT_SETTINGS.practiceName,
+      openDays,
+      minimumStaffing,
+      defaultAllowance,
+      absenceNeedsApproval: typeof src.absenceNeedsApproval === 'boolean' ? src.absenceNeedsApproval : current.absenceNeedsApproval,
+    },
+  };
+}
+
+export function validatePattern(pattern) {
+  if (!Array.isArray(pattern)) return fail('Bitte wähle die Arbeitstage.');
+  const value = WEEKDAYS.filter((d) => pattern.includes(d));
+  if (!value.length) return fail('Bitte wähle mindestens einen Arbeitstag.');
+  return { value };
+}
+
+// Changes an approver makes to a person. year applies to allowance and carryOver.
+export function validatePersonUpdate(input, person) {
+  const src = input && typeof input === 'object' ? input : {};
+  const next = { ...person, allowances: { ...person.allowances }, carryOver: { ...person.carryOver } };
+  if (src.name !== undefined) {
+    const r = validateName(src.name);
+    if (r.error) return r;
+    next.name = r.value;
+  }
+  if (src.role !== undefined) {
+    if (!Object.hasOwn(ROLES, src.role)) return fail('Bitte wähle einen Bereich.');
+    next.role = src.role;
+  }
+  if (src.workPattern !== undefined) {
+    const r = validatePattern(src.workPattern);
+    if (r.error) return r;
+    next.workPattern = r.value;
+  }
+  if (src.active !== undefined) {
+    if (typeof src.active !== 'boolean') return fail('Aktiv: ja oder nein.');
+    next.active = src.active;
+  }
+  if (src.allowance !== undefined || src.carryOver !== undefined) {
+    const year = Number(src.year);
+    if (!Number.isInteger(year) || year < 2020 || year > 2040) return fail('Bitte wähle ein Jahr zwischen 2020 und 2040.');
+    if (src.allowance === null || src.allowance === '') {
+      delete next.allowances[year];
+    } else if (src.allowance !== undefined) {
+      if (!isHalfStep(src.allowance) || src.allowance < 0 || src.allowance > 60) {
+        return fail('Urlaubsanspruch: bitte 0 bis 60 Tage, in halben Tagen.');
+      }
+      next.allowances[year] = src.allowance;
+    }
+    if (src.carryOver !== undefined) {
+      if (!isHalfStep(src.carryOver) || src.carryOver < 0 || src.carryOver > 60) {
+        return fail('Resttage: bitte 0 bis 60 Tage, in halben Tagen.');
+      }
+      if (src.carryOver === 0) delete next.carryOver[year];
+      else next.carryOver[year] = src.carryOver;
+    }
+  }
+  return { value: next };
+}
+
+export function validateNewPerson(input) {
+  const src = input && typeof input === 'object' ? input : {};
+  const username = typeof src.username === 'string' ? src.username.trim().toLowerCase() : '';
+  if (!/^[a-z0-9._-]{2,40}$/.test(username)) {
+    return fail('Benutzername: 2 bis 40 Zeichen, nur Kleinbuchstaben, Ziffern, Punkt und Strich.');
+  }
+  const name = validateName(src.name);
+  if (name.error) return name;
+  if (!Object.hasOwn(ROLES, src.role || '')) return fail('Bitte wähle einen Bereich.');
+  const pattern = validatePattern(src.workPattern ?? FULL_WEEK);
+  if (pattern.error) return pattern;
+  const email = typeof src.email === 'string' ? src.email.trim() : '';
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail('Die E-Mail-Adresse sieht nicht richtig aus.');
+  return {
+    value: {
+      username, name: name.value, role: src.role, workPattern: pattern.value, email,
+      approver: src.approver === true,
+    },
+  };
 }

@@ -54,3 +54,20 @@ patient discovery page and has nothing to do with it.
   profile, i.e. the owners. They never contain notes. A failed email never fails a request.
 - Real staff names never go into this repository (it is public). Dev and test data use
   made-up names.
+- Closures are entries with kind `closure`, created by approvers only (/api/closures),
+  approved at once. `reason` holds their label. Closure days never count as personal
+  vacation days; with `countsAsVacation` each person loses their own working days in them.
+- Carry-over is used first and expires on 31 March: after that, only the part used by then
+  counts (`carryOverExpired` in the balance). The settings page suggests last year's
+  remaining days, but only if last year has entries in the planner.
+- The first owner is created with `npm run user:add`; everyone else in Einstellungen. The
+  API Lambda may create, enable/disable users and change their group in the user pool.
+  People keep an `approver` flag in sync with the Cognito group.
+- Calendar feed: `/feed/<32-char token>.ics`, no JWT; CloudFront `/feed/*` → HTTP API
+  route without authorizer. Token compared in constant time; owner must be active; any
+  failure is a plain 404. Approved entries and closures from the first of last month,
+  about 14 months ahead; never notes; owners' substitute shows in the description.
+- Exports (`/api/export.ics|csv`) are the caller's own entries and do include notes.
+- Retention: a second Lambda (`handler.retention`) runs on 2 January; keeps the current
+  year plus two, deletes older entries and audit records.
+- Door notices are printed from the browser (`@media print`, #print-area).

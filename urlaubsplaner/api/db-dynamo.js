@@ -2,7 +2,7 @@
 // The AWS SDK v3 ships with the Node.js 22 Lambda runtime.
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
-  DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, ScanCommand, TransactWriteCommand,
+  DeleteCommand, DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, ScanCommand, TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { ConflictError } from './errors.js';
 import { addDays } from './rules.js';
@@ -68,8 +68,38 @@ export function createDynamoDb(env = process.env) {
       return items;
     },
 
-    async putPerson(person) {
-      await doc.send(new PutCommand({ TableName: T.people, Item: person }));
+    async putPerson(person, audit) {
+      if (!audit) {
+        await doc.send(new PutCommand({ TableName: T.people, Item: person }));
+        return;
+      }
+      await write([{ Put: { TableName: T.people, Item: person } }, auditPut(audit)]);
+    },
+
+    async putSettings(settings, audit) {
+      await write([{ Put: { TableName: T.settings, Item: { ...settings, id: 'practice' } } }, auditPut(audit)]);
+    },
+
+    // Used only by the yearly retention job.
+    async purgeAudit(before) {
+      let removed = 0;
+      let ExclusiveStartKey;
+      do {
+        const res = await doc.send(new ScanCommand({
+          TableName: T.audit,
+          FilterExpression: '#at < :before',
+          ExpressionAttributeNames: { '#at': 'at' },
+          ExpressionAttributeValues: { ':before': before },
+          ProjectionExpression: 'id',
+          ExclusiveStartKey,
+        }));
+        for (const item of res.Items || []) {
+          await doc.send(new DeleteCommand({ TableName: T.audit, Key: { id: item.id } }));
+          removed += 1;
+        }
+        ExclusiveStartKey = res.LastEvaluatedKey;
+      } while (ExclusiveStartKey);
+      return removed;
     },
 
     async getSettings() {

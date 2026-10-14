@@ -3,16 +3,18 @@
 // The browser never counts days; numbers come from the API (/api/overview, /api/check).
 import { devSignIn, devUsers, initAuth, isSignedIn, signIn, signOut } from './auth.js';
 import {
-  HALF, MONTHS, STATUS, WD_KEYS, WEEKDAYS, addDays, api, days, h, isoOf, kindText as kindLabel,
-  longDate, num, onSignedOut, rangeText, showToast, weekdayIndex,
+  HALF, MONTHS, STATUS, WD_KEYS, WEEKDAYS, addDays, api, closureNotice, days, download, h, isoOf,
+  kindText as kindLabel, longDate, num, onSignedOut, printNotice, rangeText, showToast, weekdayDate, weekdayIndex,
 } from './ui.js';
 import { requestsPage } from './requests.js';
+import { settingsPage } from './settings.js';
 import { teamPage } from './team.js';
 
 const main = document.getElementById('main');
 const topActions = document.getElementById('top-actions');
 const drawer = document.getElementById('drawer');
 const nameDialog = document.getElementById('name-dialog');
+const extraDialog = document.getElementById('extra-dialog');
 
 const state = { year: null, view: 'year', month: 0, data: null, drag: null, suppressClick: false };
 
@@ -79,7 +81,7 @@ async function load(year = state.year) {
 function currentPage() {
   const page = location.hash.slice(1);
   if (page === 'team') return page;
-  if (page === 'antraege' && state.data.me.canApprove) return page;
+  if ((page === 'antraege' || page === 'einstellungen') && state.data.me.canApprove) return page;
   return 'me';
 }
 
@@ -90,7 +92,8 @@ function renderNav(page) {
     link('#', 'me', 'Mein Kalender'),
     link('#team', 'team', 'Team'),
     d.me.canApprove ? link('#antraege', 'antraege', 'Anträge',
-      d.openRequests ? h('span', { class: 'count', 'aria-label': `${d.openRequests} offen` }, String(d.openRequests)) : null) : null);
+      d.openRequests ? h('span', { class: 'count', 'aria-label': `${d.openRequests} offen` }, String(d.openRequests)) : null) : null,
+    d.me.canApprove ? link('#einstellungen', 'einstellungen', 'Einstellungen') : null);
 }
 
 function render() {
@@ -108,6 +111,10 @@ function render() {
     main.replaceChildren(renderNav(page), requestsPage({ onDecided: () => load() }));
     return;
   }
+  if (page === 'einstellungen') {
+    main.replaceChildren(renderNav(page), settingsPage({ today: d.today, myId: d.me.userId, practiceName: d.practice.name, onChanged: () => load() }));
+    return;
+  }
 
   const focusDate = document.activeElement?.dataset?.date;
   main.replaceChildren(
@@ -121,6 +128,7 @@ function render() {
     renderLegend(),
     renderCalendar(),
     renderEntries(),
+    renderExport(),
   );
   if (focusDate) main.querySelector(`[data-date="${focusDate}"]`)?.focus();
 }
@@ -131,11 +139,20 @@ function renderBalance(b) {
     h('span', { class: 'stat-value' }, num(value)),
     sub ? h('span', { class: 'stat-sub' }, sub) : null);
   return h('section', { class: 'balance', 'aria-label': `Urlaubskonto ${b.year}` },
-    box(`Anspruch ${b.year}`, b.total, b.carryOver ? `${num(b.allowance)} + ${num(b.carryOver)} aus dem Vorjahr` : 'Tage'),
+    box(`Anspruch ${b.year}`, b.total, carryText(b)),
     box('Genommen', b.taken, 'bis gestern'),
     box('Geplant', b.planned, 'ab heute, bestätigt'),
     box('Beantragt', b.pending, 'wartet auf Bestätigung', b.pending ? 'is-pending' : ''),
     box('Übrig', b.remaining, b.pending ? `${num(b.remaining - b.pending)} wenn alles bestätigt wird` : 'Tage', 'is-main'));
+}
+
+function carryText(b) {
+  if (!b.carryOver) return 'Tage';
+  const until = longDate(b.carryOverExpires, false);
+  if (b.carryOverExpired) {
+    return `${num(b.allowance)} + ${num(b.carryOver - b.carryOverExpired)} aus dem Vorjahr (${num(b.carryOverExpired)} am ${until} verfallen)`;
+  }
+  return `${num(b.allowance)} + ${num(b.carryOver)} aus dem Vorjahr, nutzbar bis ${until}`;
 }
 
 function renderToolbar() {
@@ -221,7 +238,7 @@ function dayCell(iso, idx, { big }) {
   const said = [];
   if (!works) { cls.push('free'); said.push('kein Arbeitstag'); }
   if (holiday) { cls.push('holiday'); said.push(`Feiertag: ${holiday}`); }
-  if (closure) { cls.push('closure'); said.push('Betriebsurlaub'); }
+  if (closure) { cls.push('closure'); said.push(`Betriebsurlaub${closure.label ? `: ${closure.label}` : ''}`); }
   if (e) {
     cls.push('has-entry', `k-${e.kind}`);
     if (e.status === 'pending') cls.push('pending');
@@ -231,7 +248,7 @@ function dayCell(iso, idx, { big }) {
   if (iso === d.today) { cls.push('today'); said.push('heute'); }
 
   const label = `${WEEKDAYS[weekdayIndex(iso)]}, ${longDate(iso)}${said.length ? ` – ${said.join(', ')}` : ''}`;
-  const short = big ? (holiday || (e ? kindText(e) : closure ? 'Betriebsurlaub' : '')) : '';
+  const short = big ? (holiday || (e ? kindText(e) : closure ? (closure.label || 'Betriebsurlaub') : '')) : '';
   return h('button', {
     type: 'button',
     class: cls.join(' '),
@@ -371,6 +388,8 @@ function openDrawer(entry, start, end = start) {
   const startInput = h('input', { type: 'date', name: 'start', id: 'f-start', value: e.start, min: '2020-01-01', max: '2040-12-31', required: true });
   const endInput = h('input', { type: 'date', name: 'end', id: 'f-end', value: e.end, min: '2020-01-01', max: '2040-12-31', required: true });
   const note = h('textarea', { name: 'note', id: 'f-note', maxlength: '300', rows: '3' });
+  const isOwner = d.me.role === 'owner';
+  const substitute = h('input', { id: 'f-substitute', name: 'substitute', maxlength: '300', value: e.substitute || '', autocomplete: 'off' });
   note.value = e.note || '';
   const counter = h('span', { class: 'counter' });
   const summary = h('p', { class: 'summary', 'aria-live': 'polite' });
@@ -397,6 +416,9 @@ function openDrawer(entry, start, end = start) {
       h('div', { class: 'field' }, h('label', { for: 'f-start' }, 'Von'), startInput),
       h('div', { class: 'field' }, h('label', { for: 'f-end' }, 'Bis'), endInput)),
     halfField,
+    isOwner ? h('div', { class: 'field' },
+      h('label', { for: 'f-substitute' }, 'Vertretung ', h('span', { class: 'hint' }, '(für Aushang und Kalender, z. B. Name, Adresse, Telefon)')),
+      substitute) : null,
     h('div', { class: 'field' },
       h('label', { for: 'f-note' }, 'Notiz ', h('span', { class: 'hint' }, '(sehen nur du und die Praxisleitung)')),
       note, counter),
@@ -407,6 +429,7 @@ function openDrawer(entry, start, end = start) {
     h('div', { class: 'actions' },
       locked ? null : saveBtn,
       !isNew && !locked ? h('button', { class: 'button danger', type: 'button', onclick: remove }, 'Löschen') : null,
+      !isNew && isOwner ? h('button', { class: 'button', type: 'button', onclick: () => printNotice(absenceNotice(e)) }, 'Aushang drucken') : null,
       h('button', { class: 'button', type: 'button', onclick: () => drawer.close() }, locked ? 'Schließen' : 'Abbrechen')),
   ].filter(Boolean));
   if (locked) for (const el of form.querySelectorAll('input, select, textarea')) el.disabled = true;
@@ -419,6 +442,7 @@ function openDrawer(entry, start, end = start) {
     const half = s === en ? (fd.get('half') || '') : '';
     return {
       kind, reason: kind === 'absence' ? reasonSelect.value : '', start: s, end: en, half, note: note.value,
+      substitute: isOwner ? substitute.value : '',
     };
   }
 
@@ -500,6 +524,99 @@ function openDrawer(entry, start, end = start) {
   check();
   drawer.showModal();
   (locked ? form.querySelector('.close') : form.querySelector('input[name="kind"]:checked'))?.focus();
+}
+
+// Door notice when an owner (doctor) is away.
+function absenceNotice(e) {
+  const d = state.data;
+  return {
+    title: `${d.me.name} ist nicht in der Ordination`,
+    lines: [
+      e.start === e.end ? `am ${weekdayDate(e.start)}${e.half ? ` (${HALF[e.half]})` : ''}` : `von ${weekdayDate(e.start)} bis ${weekdayDate(e.end)}`,
+      e.substitute ? `Vertretung: ${e.substitute}` : '',
+    ],
+    footer: d.practice.name ? `Ihr Team ${d.practice.name}` : '',
+  };
+}
+
+// ---------- export and calendar subscription ----------
+
+function renderExport() {
+  const y = state.year;
+  const run = (path, name) => async () => {
+    try {
+      await download(path, name);
+    } catch (err) {
+      showToast(err.message);
+    }
+  };
+  const closures = state.data.closures;
+  return h('section', { class: 'card export' },
+    h('h2', {}, 'Mitnehmen'),
+    h('p', { class: 'hint' }, `Deine Einträge ${y} als Datei, oder alle Abwesenheiten im Team automatisch in deinem Handy-Kalender.`),
+    h('div', { class: 'actions' },
+      h('button', { class: 'button', type: 'button', onclick: run(`/api/export.ics?year=${y}`, `abwesenheiten-${y}.ics`) }, 'Kalenderdatei (.ics)'),
+      h('button', { class: 'button', type: 'button', onclick: run(`/api/export.csv?year=${y}`, `abwesenheiten-${y}.csv`) }, 'Tabelle für Excel (.csv)'),
+      h('button', { class: 'button', type: 'button', onclick: openFeedDialog }, 'Kalender-Abo')),
+    closures.length ? h('div', { class: 'closures' },
+      h('h3', {}, `Betriebsurlaub ${y}`),
+      h('ul', { class: 'plain' }, closures.map((c) => h('li', {},
+        h('span', {}, `${rangeText(c)}${c.label ? ` · ${c.label}` : ''}${c.countsAsVacation ? ' · zählt als Urlaub' : ''}`),
+        h('button', { class: 'link', type: 'button', onclick: () => printNotice(closureNotice(c, state.data.practice.name)) }, 'Aushang drucken'))))) : null);
+}
+
+function openFeedDialog() {
+  const box = h('div', { class: 'feed' });
+  const error = h('p', { class: 'error', role: 'alert' });
+  const draw = () => {
+    const url = state.data.me.feedUrl;
+    const input = url ? h('input', { id: 'feed-url', value: url, readonly: true }) : null;
+    box.replaceChildren(...[
+      h('p', {}, 'Mit diesem Link zeigt dein Handy- oder Outlook-Kalender alle bestätigten Abwesenheiten im Team an, ohne Notizen. Er aktualisiert sich von selbst.'),
+      h('p', { class: 'notice' }, 'Der Link ist wie ein Schlüssel: Wer ihn hat, sieht die Abwesenheiten. Gib ihn nicht weiter.'),
+      url ? h('div', { class: 'field' }, h('label', { for: 'feed-url' }, 'Dein Link'), input) : null,
+      url ? h('ul', { class: 'hint steps' },
+        h('li', {}, 'iPhone: Einstellungen → Kalender → Accounts → Account hinzufügen → Andere → Kalenderabo hinzufügen'),
+        h('li', {}, 'Google Kalender (am Computer): Weitere Kalender → + → Per URL'),
+        h('li', {}, 'Outlook: Kalender hinzufügen → Aus dem Internet abonnieren')) : null,
+      error,
+      h('div', { class: 'actions' },
+        url ? h('button', {
+          class: 'button primary',
+          type: 'button',
+          onclick: async () => {
+            try {
+              await navigator.clipboard.writeText(url);
+              showToast('Link kopiert.');
+            } catch {
+              input.select();
+            }
+          },
+        }, 'Link kopieren') : null,
+        h('button', { class: url ? 'button' : 'button primary', type: 'button', onclick: () => change('PUT') }, url ? 'Neuen Link erstellen' : 'Link erstellen'),
+        url ? h('button', { class: 'button danger', type: 'button', onclick: () => change('DELETE') }, 'Link löschen') : null,
+        h('button', { class: 'button', type: 'button', onclick: () => extraDialog.close() }, 'Schließen')),
+    ].filter(Boolean));
+  };
+  async function change(method) {
+    error.textContent = '';
+    if (method === 'DELETE' || state.data.me.feedUrl) {
+      const question = method === 'DELETE'
+        ? 'Link löschen? Kalender, die ihn verwenden, zeigen dann nichts mehr an.'
+        : 'Neuen Link erstellen? Der alte Link funktioniert dann sofort nicht mehr.';
+      if (!window.confirm(question)) return;
+    }
+    try {
+      const res = await api(method, '/api/me/feed');
+      state.data.me.feedUrl = method === 'PUT' ? res.url : '';
+      draw();
+    } catch (err) {
+      error.textContent = err.message;
+    }
+  }
+  draw();
+  extraDialog.replaceChildren(h('div', { class: 'dialog-body' }, h('h2', { id: 'extra-title' }, 'Kalender-Abo'), box));
+  extraDialog.showModal();
 }
 
 function summaryText(v, res) {

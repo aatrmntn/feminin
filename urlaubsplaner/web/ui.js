@@ -84,3 +84,47 @@ export async function api(method, path, body) {
   }
   return null;
 }
+
+// Downloads a file from the API (with the login) and hands it to the browser.
+export async function download(path, filename) {
+  const res = await fetch(path, { headers: await authHeaders() });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Der Download hat nicht geklappt.');
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = h('a', { href: url, download: filename });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function weekdayDate(iso) {
+  return `${WEEKDAYS[weekdayIndex(iso)]}, ${longDate(iso)}`;
+}
+
+// A notice for the door and the website, printed on its own page.
+// notice: { title, lines: [text], footer }
+export function printNotice({ title, lines, footer }) {
+  const area = document.getElementById('print-area');
+  area.replaceChildren(h('article', { class: 'notice-sheet' },
+    h('h1', {}, title),
+    lines.filter(Boolean).map((l) => h('p', {}, l)),
+    footer ? h('p', { class: 'notice-footer' }, footer) : null));
+  window.print();
+}
+
+export function closureNotice(closure, practiceName) {
+  return {
+    title: 'Ordination geschlossen',
+    lines: [
+      closure.start === closure.end
+        ? `am ${weekdayDate(closure.start)}`
+        : `von ${weekdayDate(closure.start)} bis ${weekdayDate(closure.end)}`,
+      closure.reopens ? `Ab ${weekdayDate(closure.reopens)} sind wir wieder für Sie da.` : '',
+      closure.substitute ? `Vertretung: ${closure.substitute}` : '',
+    ],
+    footer: practiceName ? `Ihr Team ${practiceName}` : '',
+  };
+}

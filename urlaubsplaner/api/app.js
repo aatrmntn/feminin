@@ -1,8 +1,10 @@
 // Routes of the API. Independent of AWS: the Lambda handler and the local dev server both
 // pass in a request and a database. Every route checks the caller itself.
-import { randomUUID } from 'node:crypto';
-import * as rules from './rules.js';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { toCsv } from './csv.js';
 import { ConflictError, HttpError } from './errors.js';
+import { calendar } from './ical.js';
+import * as rules from './rules.js';
 
 export { ConflictError, HttpError };
 
@@ -10,10 +12,21 @@ const NOT_FOUND = 'Diesen Eintrag gibt es nicht (mehr).';
 const NOT_SET_UP = 'Dein Zugang ist noch nicht eingerichtet. Bitte melde dich bei der Praxisleitung.';
 
 // notify (optional): async ({ to: [emails], subject, text }) => void. Used for request emails.
-export function createApp({ db, now = () => new Date(), notify = null, appUrl = '' }) {
+// directory (optional): the login system (Cognito), so approvers can add and disable people:
+//   createUser({ username, email, approver }) => { userId, startPassword }
+//   setEnabled(username, enabled), setApprover(username, approver)
+// appUrl: the planner's address ending in '/', for email links and the calendar feed.
+export function createApp({ db, now = () => new Date(), notify = null, directory = null, appUrl = '' }) {
   async function handle(req) {
     try {
+      if (req.path.startsWith('/feed/')) {
+        const feed = req.method === 'GET' && req.path.match(/^\/feed\/([A-Za-z0-9_-]{32})\.ics$/);
+        return await feedResponse(feed ? feed[1] : null);
+      }
       const body = await route(req);
+      if (body?.raw !== undefined) {
+        return { status: 200, raw: body.raw, contentType: body.contentType, filename: body.filename };
+      }
       return { status: req.method === 'POST' && body?.created ? 201 : 200, body: strip(body) };
     } catch (err) {
       if (err instanceof HttpError) return { status: err.status, body: { error: err.message } };
@@ -27,6 +40,8 @@ export function createApp({ db, now = () => new Date(), notify = null, appUrl = 
     const path = req.path.replace(/\/+$/, '');
     const m = path.match(/^\/api\/entries\/([0-9a-f-]{36})$/);
     const decision = path.match(/^\/api\/entries\/([0-9a-f-]{36})\/decision$/);
+    const closure = path.match(/^\/api\/closures\/([0-9a-f-]{36})$/);
+    const personPath = path.match(/^\/api\/people\/([A-Za-z0-9_.:-]{1,64})$/);
 
     if (req.method === 'GET' && path === '/api/overview') return overview(req);
     if (req.method === 'POST' && path === '/api/check') return check(req);
@@ -35,6 +50,18 @@ export function createApp({ db, now = () => new Date(), notify = null, appUrl = 
     if (req.method === 'GET' && path === '/api/team') return team(req);
     if (req.method === 'GET' && path === '/api/requests') return requests(req);
     if (decision && req.method === 'POST') return decide(req, decision[1]);
+    if (req.method === 'POST' && path === '/api/closures') return createClosure(req);
+    if (closure && req.method === 'PUT') return updateClosure(req, closure[1]);
+    if (closure && req.method === 'DELETE') return deleteClosure(req, closure[1]);
+    if (req.method === 'GET' && path === '/api/settings') return getSettings(req);
+    if (req.method === 'PUT' && path === '/api/settings') return putSettings(req);
+    if (req.method === 'GET' && path === '/api/people') return listPeople(req);
+    if (req.method === 'POST' && path === '/api/people') return addPerson(req);
+    if (personPath && req.method === 'PUT') return updatePerson(req, personPath[1]);
+    if (req.method === 'GET' && path === '/api/export.ics') return exportIcs(req);
+    if (req.method === 'GET' && path === '/api/export.csv') return exportCsv(req);
+    if (req.method === 'PUT' && path === '/api/me/feed') return createFeed(req);
+    if (req.method === 'DELETE' && path === '/api/me/feed') return deleteFeed(req);
     if (m && req.method === 'GET') return getEntry(req, m[1]);
     if (m && req.method === 'PUT') return updateEntry(req, m[1]);
     if (m && req.method === 'DELETE') return deleteEntry(req, m[1]);
@@ -145,7 +172,7 @@ export function createApp({ db, now = () => new Date(), notify = null, appUrl = 
 
   async function validate(input, owner, id) {
     if (input.kind === 'closure') {
-      throw new HttpError(400, 'Betriebsurlaub kann erst in einer späteren Version eingetragen werden.');
+      throw new HttpError(400, 'Betriebsurlaub trägt die Praxisleitung unter „Einstellungen“ ein.');
     }
     const start = rules.isIsoDate(input.start) ? input.start : null;
     const end = rules.isIsoDate(input.end) ? input.end : start;
@@ -161,7 +188,11 @@ export function createApp({ db, now = () => new Date(), notify = null, appUrl = 
       closures,
       id,
     });
-    return { ...result, closures };
+    if (result.error) return { ...result, closures };
+    // Owners (doctors) can name who stands in for them; shown on the door notice and in the feed.
+    const substitute = owner.role === 'owner' ? rules.validateSubstitute(input.substitute) : { value: '' };
+    if (substitute.error) return { error: substitute.error, closures };
+    return { value: { ...result.value, substitute: substitute.value }, closures };
   }
 
   function present(entry, owner, closures, { withNote }) {
@@ -174,6 +205,7 @@ export function createApp({ db, now = () => new Date(), notify = null, appUrl = 
       start: entry.start,
       end: entry.end,
       half: entry.half || '',
+      substitute: entry.substitute || '',
       status: entry.status,
       rev: entry.rev,
       days: entry.kind === 'vacation' ? rules.countEntry(entry, pattern, rules.closureDays(closures)).total : 0,
@@ -209,6 +241,35 @@ export function createApp({ db, now = () => new Date(), notify = null, appUrl = 
     return 'pending';
   }
 
+  function presentClosures(closures, settings) {
+    const approved = closures.filter((c) => c.kind === 'closure' && c.status === 'approved');
+    const closed = rules.closureDays(approved);
+    return approved
+      .sort((a, b) => a.start.localeCompare(b.start))
+      .map((c) => ({
+        id: c.id,
+        rev: c.rev,
+        start: c.start,
+        end: c.end,
+        label: c.reason || '',
+        substitute: c.substitute || '',
+        countsAsVacation: !!c.countsAsVacation,
+        reopens: rules.nextOpenDay(c.end, settings, closed),
+      }));
+  }
+
+  function feedUrl(token) {
+    return `${appUrl}feed/${token}.ics`;
+  }
+
+  function parseYear(value, today) {
+    const year = value ? Number(value) : Number(today.slice(0, 4));
+    if (!Number.isInteger(year) || year < 2020 || year > 2040) {
+      throw new HttpError(400, 'Bitte wähle ein Jahr zwischen 2020 und 2040.');
+    }
+    return year;
+  }
+
   // ----- routes -----
 
   async function overview(req) {
@@ -241,12 +302,11 @@ export function createApp({ db, now = () => new Date(), notify = null, appUrl = 
           roleLabel: rules.ROLES[me.person.role] || '',
           workPattern: pattern,
           canApprove: me.isApprover,
+          feedUrl: me.person.feed?.token ? feedUrl(me.person.feed.token) : '',
         },
         practice: { name: settings.practiceName, openDays: settings.openDays },
         holidays: rules.publicHolidays(year),
-        closures: closures
-          .filter((c) => c.status === 'approved')
-          .map((c) => ({ start: c.start, end: c.end, countsAsVacation: !!c.countsAsVacation, note: c.reason || '' })),
+        closures: presentClosures(closures, settings),
         entries: entries.map((e) => present(e, me.person, closures, { withNote: true })),
         balance: rules.balance({ person: me.person, year, today, entries, closures, settings }),
         reasons: rules.REASONS,
@@ -405,10 +465,11 @@ export function createApp({ db, now = () => new Date(), notify = null, appUrl = 
           }))
           .sort((a, b) => roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role) || a.name.localeCompare(b.name, 'de')),
         entries: entries.map((e) => ({
-          id: e.id, userId: e.userId, kind: e.kind, reason: e.reason || '', start: e.start, end: e.end, half: e.half || '', status: e.status,
+          id: e.id, userId: e.userId, kind: e.kind, reason: e.reason || '', start: e.start, end: e.end, half: e.half || '',
+          status: e.status, substitute: e.substitute || '',
         })),
         holidays: dates.filter((d) => rules.holidayName(d)).map((d) => ({ date: d, name: rules.holidayName(d) })),
-        closures: closures.filter((c) => c.status === 'approved').map((c) => ({ start: c.start, end: c.end })),
+        closures: presentClosures(closures, settings),
         days: dates.map((d) => ({
           date: d,
           open: approved.get(d).open,
@@ -493,6 +554,358 @@ export function createApp({ db, now = () => new Date(), notify = null, appUrl = 
     return { item: present(next, owner, closures, { withNote: true }) };
   }
 
+  // ----- practice closures (approvers) -----
+
+  const CLOSURE_NOT_FOUND = 'Diesen Betriebsurlaub gibt es nicht (mehr).';
+
+  async function closureById(id) {
+    const entry = await db.getEntry(id);
+    if (!entry || entry.kind !== 'closure') throw new HttpError(404, CLOSURE_NOT_FOUND);
+    return entry;
+  }
+
+  async function createClosure(req) {
+    const me = await caller(req);
+    requireApprover(me);
+    const { value, error } = rules.validateClosure(readBody(req));
+    if (error) throw new HttpError(400, error);
+    const { settings } = await context();
+    const at = now().toISOString();
+    const entry = {
+      id: randomUUID(), userId: me.person.userId, ...value, note: '', status: 'approved', rev: 1, createdAt: at, updatedAt: at,
+    };
+    await db.createEntry(entry, auditRecord(me, 'create', entry));
+    return { created: true, item: presentClosures([entry], settings)[0] };
+  }
+
+  async function updateClosure(req, id) {
+    const me = await caller(req);
+    requireApprover(me);
+    const input = readBody(req);
+    const entry = await closureById(id);
+    const rev = expectedRev(input.expectedRev);
+    if (rev !== entry.rev) throw new ConflictError();
+    const { value, error } = rules.validateClosure(input);
+    if (error) throw new HttpError(400, error);
+    const { settings } = await context();
+    const next = { ...entry, ...value, rev: entry.rev + 1, updatedAt: now().toISOString() };
+    await db.updateEntry(next, rev, auditRecord(me, 'update', next));
+    return { item: presentClosures([next], settings)[0] };
+  }
+
+  async function deleteClosure(req, id) {
+    const me = await caller(req);
+    requireApprover(me);
+    const entry = await closureById(id);
+    const rev = expectedRev(req.query?.rev);
+    if (rev !== entry.rev) throw new ConflictError();
+    await db.deleteEntry(id, rev, auditRecord(me, 'delete', entry));
+    return { item: { id, deleted: true } };
+  }
+
+  // ----- practice settings (approvers) -----
+
+  function presentSettings(settings) {
+    return {
+      practiceName: settings.practiceName,
+      openDays: settings.openDays,
+      minimumStaffing: settings.minimumStaffing,
+      defaultAllowance: settings.defaultAllowance,
+      absenceNeedsApproval: settings.absenceNeedsApproval,
+      carryOverExpires: settings.carryOverExpires,
+      roles: rules.ROLES,
+    };
+  }
+
+  async function getSettings(req) {
+    const me = await caller(req);
+    requireApprover(me);
+    const { settings } = await context();
+    return { item: presentSettings(settings) };
+  }
+
+  async function putSettings(req) {
+    const me = await caller(req);
+    requireApprover(me);
+    const { settings } = await context();
+    const { value, error } = rules.validateSettings(readBody(req), settings);
+    if (error) throw new HttpError(400, error);
+    await db.putSettings(value, simpleAudit(me, 'settings', ''));
+    return { item: presentSettings({ ...settings, ...value }) };
+  }
+
+  // ----- people (approvers) -----
+
+  function simpleAudit(me, action, subjectUserId) {
+    return { id: randomUUID(), at: now().toISOString(), actorId: me.person.userId, action, subjectUserId };
+  }
+
+  async function personBalance(person, year, today, settings) {
+    const [own, yearEntries] = await Promise.all([
+      db.listUserEntries(person.userId, `${year}-01-01`, `${year}-12-31`),
+      db.listYearEntries(year),
+    ]);
+    const closures = yearEntries.filter((e) => e.kind === 'closure');
+    const entries = own.filter((e) => e.kind !== 'closure');
+    return { ...rules.balance({ person, year, today, entries, closures, settings }), tracked: entries.length > 0 };
+  }
+
+  async function presentPerson(person, year, today, settings) {
+    const [b, last] = await Promise.all([
+      personBalance(person, year, today, settings),
+      // What was left at the end of last year: a suggestion for the carry-over,
+      // but only if last year was kept in the planner at all.
+      personBalance(person, year - 1, `${year}-01-01`, settings),
+    ]);
+    return {
+      userId: person.userId,
+      username: person.username || '',
+      name: person.name,
+      email: person.email || '',
+      role: person.role,
+      roleLabel: rules.ROLES[person.role] || '',
+      active: person.active !== false,
+      approver: !!person.approver,
+      workPattern: rules.normalizePattern(person.workPattern),
+      defaultAllowance: rules.defaultAllowance(person.workPattern, settings.defaultAllowance),
+      allowanceOverride: typeof person.allowances?.[year] === 'number' ? person.allowances[year] : null,
+      carryOver: rules.carryOverFor(person, year),
+      suggestedCarryOver: last.tracked ? Math.max(0, last.remaining) : null,
+      balance: (({ tracked, ...rest }) => rest)(b),
+    };
+  }
+
+  async function listPeople(req) {
+    const me = await caller(req);
+    requireApprover(me);
+    const { settings, today } = await context();
+    const year = parseYear(req.query?.year, today);
+    const roleOrder = Object.keys(rules.ROLES);
+    const people = (await db.listPeople())
+      .sort((a, b) => (a.active === false) - (b.active === false)
+        || roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role) || a.name.localeCompare(b.name, 'de'));
+    const items = [];
+    for (const p of people) items.push(await presentPerson(p, year, today, settings));
+    return { item: { year, today, roles: rules.ROLES, people: items } };
+  }
+
+  function requireDirectory() {
+    if (!directory) {
+      throw new HttpError(501, 'Das geht in dieser Umgebung nicht. Bitte `npm run user:add` verwenden.');
+    }
+  }
+
+  async function addPerson(req) {
+    const me = await caller(req);
+    requireApprover(me);
+    const { value, error } = rules.validateNewPerson(readBody(req));
+    if (error) throw new HttpError(400, error);
+    requireDirectory();
+    const people = await db.listPeople();
+    if (people.some((p) => p.username === value.username)) {
+      throw new HttpError(409, `Den Benutzernamen „${value.username}“ gibt es schon. Bitte wähle einen anderen.`);
+    }
+    const { userId, startPassword } = await directory.createUser({
+      username: value.username, email: value.email, approver: value.approver,
+    });
+    const person = {
+      userId,
+      username: value.username,
+      name: value.name,
+      email: value.email,
+      role: value.role,
+      active: true,
+      approver: value.approver,
+      workPattern: value.workPattern,
+      allowances: {},
+      carryOver: {},
+      updatedAt: now().toISOString(),
+    };
+    await db.putPerson(person, simpleAudit(me, 'person-create', userId));
+    const { settings, today } = await context();
+    return {
+      created: true,
+      item: { person: await presentPerson(person, Number(today.slice(0, 4)), today, settings), startPassword },
+    };
+  }
+
+  async function updatePerson(req, userId) {
+    const me = await caller(req);
+    requireApprover(me);
+    const input = readBody(req);
+    const person = await db.getPerson(userId);
+    if (!person) throw new HttpError(404, 'Diese Person gibt es nicht.');
+    const { value, error } = rules.validatePersonUpdate(input, person);
+    if (error) throw new HttpError(400, error);
+    const self = userId === me.person.userId;
+    if (self && value.active === false) throw new HttpError(400, 'Du kannst dich nicht selbst deaktivieren.');
+    if (self && input.approver === false) {
+      throw new HttpError(400, 'Du kannst dir das Recht zu genehmigen nicht selbst wegnehmen.');
+    }
+    const enabledChanged = (person.active !== false) !== (value.active !== false);
+    const approverChanged = typeof input.approver === 'boolean' && input.approver !== !!person.approver;
+    if (enabledChanged || approverChanged) requireDirectory();
+    if (enabledChanged) await directory.setEnabled(person.username, value.active !== false);
+    if (approverChanged) {
+      await directory.setApprover(person.username, input.approver);
+      value.approver = input.approver;
+    }
+    value.updatedAt = now().toISOString();
+    await db.putPerson(value, simpleAudit(me, 'person-update', userId));
+    const { settings, today } = await context();
+    const year = parseYear(input.year, today);
+    return { item: await presentPerson(value, year, today, settings) };
+  }
+
+  // ----- export and calendar feed -----
+
+  async function ownYear(me, year) {
+    const own = await db.listUserEntries(me.person.userId, `${year}-01-01`, `${year}-12-31`);
+    return own.filter((e) => e.kind !== 'closure').sort((a, b) => a.start.localeCompare(b.start));
+  }
+
+  function entryTitle(e) {
+    const what = e.kind === 'vacation' ? 'Urlaub' : (rules.REASONS[e.reason] || 'Abwesenheit');
+    const half = e.half === 'am' ? ' (Vormittag)' : e.half === 'pm' ? ' (Nachmittag)' : '';
+    return `${what}${half}`;
+  }
+
+  async function exportIcs(req) {
+    const me = await caller(req);
+    const { today } = await context();
+    const year = parseYear(req.query?.year, today);
+    const entries = (await ownYear(me, year)).filter((e) => rules.ACTIVE_STATUSES.includes(e.status));
+    const raw = calendar({
+      name: `Meine Abwesenheiten ${year}`,
+      events: entries.map((e) => ({
+        uid: `${e.id}@urlaubsplaner`,
+        start: e.start,
+        end: e.end,
+        half: e.half,
+        summary: `${entryTitle(e)}${e.status === 'pending' ? ' – beantragt' : ''}`,
+        description: [e.note, e.substitute ? `Vertretung: ${e.substitute}` : ''].filter(Boolean).join('\n'),
+        updatedAt: e.updatedAt,
+      })),
+    });
+    return { raw, contentType: 'text/calendar; charset=utf-8', filename: `abwesenheiten-${year}.ics` };
+  }
+
+  async function exportCsv(req) {
+    const me = await caller(req);
+    const { today } = await context();
+    const year = parseYear(req.query?.year, today);
+    const entries = await ownYear(me, year);
+    const closures = (await db.listYearEntries(year)).filter((e) => e.kind === 'closure');
+    const pattern = rules.normalizePattern(me.person.workPattern);
+    const closed = rules.closureDays(closures);
+    const at = (iso) => iso.split('-').reverse().join('.');
+    const status = { pending: 'beantragt', approved: 'bestätigt', declined: 'abgelehnt' };
+    const rows = [['Von', 'Bis', 'Art', 'Halber Tag', 'Urlaubstage', 'Status', 'Notiz', 'Kommentar der Praxisleitung']];
+    for (const e of entries) {
+      rows.push([
+        at(e.start),
+        at(e.end),
+        e.kind === 'vacation' ? 'Urlaub' : (rules.REASONS[e.reason] || 'Abwesenheit'),
+        e.half === 'am' ? 'Vormittag' : e.half === 'pm' ? 'Nachmittag' : '',
+        e.kind === 'vacation' ? String(rules.countEntry(e, pattern, closed).total).replace('.', ',') : '0',
+        status[e.status] || e.status,
+        e.note || '',
+        e.decisionComment || '',
+      ]);
+    }
+    return { raw: toCsv(rows), contentType: 'text/csv; charset=utf-8', filename: `abwesenheiten-${year}.csv` };
+  }
+
+  // The random token is the credential: shown only to its owner, replaceable, removable.
+  async function createFeed(req) {
+    const me = await caller(req);
+    const token = randomBytes(24).toString('base64url'); // 32 characters
+    const person = { ...me.person, feed: { token, createdAt: now().toISOString() }, updatedAt: now().toISOString() };
+    await db.putPerson(person, simpleAudit(me, 'feed-create', me.person.userId));
+    return { item: { url: feedUrl(token) } };
+  }
+
+  async function deleteFeed(req) {
+    const me = await caller(req);
+    const { feed, ...rest } = me.person;
+    await db.putPerson({ ...rest, updatedAt: now().toISOString() }, simpleAudit(me, 'feed-delete', me.person.userId));
+    return { item: { deleted: true } };
+  }
+
+  // Anonymous: calendar apps cannot sign in. Any problem answers a plain 404.
+  async function feedResponse(token) {
+    const notFound = { status: 404, raw: 'Not found', contentType: 'text/plain; charset=utf-8' };
+    if (!token) return notFound;
+    try {
+      const people = await db.listPeople();
+      const wanted = Buffer.from(token);
+      const owner = people.find((p) => {
+        const have = Buffer.from(p.feed?.token || '');
+        return have.length === wanted.length && timingSafeEqual(have, wanted);
+      });
+      if (!owner || owner.active === false) return notFound;
+
+      const { settings, today } = await context();
+      const from = `${rules.addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7)}-01`; // first of last month
+      const to = rules.addDays(from, 14 * 31);
+      const active = new Map(people.filter((p) => p.active !== false).map((p) => [p.userId, p]));
+      const around = await entriesAround(from, to);
+      const events = [];
+      for (const e of around) {
+        if (e.status !== 'approved') continue;
+        if (e.kind === 'closure') {
+          events.push({
+            uid: `${e.id}@urlaubsplaner`, start: e.start, end: e.end, half: '',
+            summary: `${settings.practiceName}: Ordination geschlossen${e.reason ? ` (${e.reason})` : ''}`,
+            description: e.substitute ? `Vertretung: ${e.substitute}` : '',
+            updatedAt: e.updatedAt,
+          });
+          continue;
+        }
+        const p = active.get(e.userId);
+        if (!p) continue;
+        events.push({
+          uid: `${e.id}@urlaubsplaner`, start: e.start, end: e.end, half: e.half,
+          summary: `${p.name}: ${entryTitle(e)}`,
+          description: e.substitute ? `Vertretung: ${e.substitute}` : '', // never the note
+          updatedAt: e.updatedAt,
+        });
+      }
+      events.sort((a, b) => a.start.localeCompare(b.start));
+      return {
+        status: 200,
+        raw: calendar({ name: `${settings.practiceName} – Abwesenheiten`, events }),
+        contentType: 'text/calendar; charset=utf-8',
+      };
+    } catch (err) {
+      console.error('Feed failed', err?.name, err?.message);
+      return notFound;
+    }
+  }
+
+  // ----- yearly retention -----
+
+  // Keeps the current year and the two before it; deletes older entries and audit records.
+  async function runRetention() {
+    const { today } = await context();
+    const year = Number(today.slice(0, 4));
+    const cutoff = `${year - 2}-01-01`;
+    const system = { person: { userId: 'system' } };
+    let deletedEntries = 0;
+    const seen = new Set();
+    for (let y = 2019; y <= year - 3; y++) {
+      for (const e of await db.listYearEntries(y)) {
+        if (e.end >= cutoff || seen.has(e.id)) continue;
+        seen.add(e.id);
+        await db.deleteEntry(e.id, e.rev, auditRecord(system, 'retention', e));
+        deletedEntries += 1;
+      }
+    }
+    const deletedAudit = await db.purgeAudit(`${cutoff}T00:00:00.000Z`);
+    console.log('Retention done', { cutoff, deletedEntries, deletedAudit });
+    return { cutoff, deletedEntries, deletedAudit };
+  }
+
   async function updateMe(req) {
     const me = await caller(req);
     const { value, error } = rules.validateName(readBody(req).name);
@@ -502,7 +915,7 @@ export function createApp({ db, now = () => new Date(), notify = null, appUrl = 
     return { item: { name: person.name } };
   }
 
-  return { handle };
+  return { handle, runRetention };
 }
 
 function strip(body) {

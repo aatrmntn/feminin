@@ -55,7 +55,7 @@ test('book a week and a half day; balance shows them as pending', async () => {
   assert.equal(o.entries[0].note, 'Wien');
   assert.equal(o.holidays.length, 13);
   assert.deepEqual(o.balance, {
-    year: 2026, allowance: 25, carryOver: 0, total: 25, taken: 0, planned: 0, pending: 5.5, remaining: 25,
+    year: 2026, allowance: 25, carryOver: 0, carryOverExpires: '2026-03-31', carryOverExpired: 0, total: 25, taken: 0, planned: 0, pending: 5.5, remaining: 25,
   });
   assert.equal(o.me.canApprove, false);
 });

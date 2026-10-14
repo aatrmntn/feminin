@@ -13,6 +13,8 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -167,13 +169,56 @@ export class PlannerStack extends Stack {
     });
     people.grantReadWriteData(fn);
     entries.grantReadWriteData(fn);
-    settings.grantReadData(fn);
+    settings.grantReadWriteData(fn);
     audit.grant(fn, 'dynamodb:PutItem'); // append only
+
+    // Approvers add, disable and promote people from the settings page.
+    fn.addEnvironment('USER_POOL_ID', userPool.userPoolId);
+    fn.addToRolePolicy(new iam.PolicyStatement({
+      actions: [
+        'cognito-idp:AdminCreateUser',
+        'cognito-idp:AdminAddUserToGroup',
+        'cognito-idp:AdminRemoveUserFromGroup',
+        'cognito-idp:AdminDisableUser',
+        'cognito-idp:AdminEnableUser',
+      ],
+      resources: [userPool.userPoolArn],
+    }));
+
+    // ---------- yearly retention: keep the current year plus two ----------
+    const retention = new lambda.Function(this, 'Retention', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      handler: 'handler.retention',
+      code: lambda.Code.fromAsset(path.join(ROOT, 'api')),
+      memorySize: 256,
+      timeout: Duration.minutes(5),
+      environment: {
+        PEOPLE_TABLE: people.tableName,
+        ENTRIES_TABLE: entries.tableName,
+        SETTINGS_TABLE: settings.tableName,
+        AUDIT_TABLE: audit.tableName,
+      },
+      logGroup: new logs.LogGroup(this, 'RetentionLogs', {
+        retention: logs.RetentionDays.ONE_YEAR,
+        removalPolicy: RemovalPolicy.DESTROY,
+      }),
+    });
+    people.grantReadData(retention);
+    settings.grantReadData(retention);
+    entries.grantReadWriteData(retention);
+    audit.grant(retention, 'dynamodb:PutItem', 'dynamodb:Scan', 'dynamodb:DeleteItem');
+    new events.Rule(this, 'RetentionSchedule', {
+      description: 'Urlaubsplaner: alte Einträge löschen (2. Jänner, 03:00 UTC)',
+      schedule: events.Schedule.cron({ minute: '0', hour: '3', day: '2', month: '1' }),
+      targets: [new targets.LambdaFunction(retention)],
+    });
 
     const httpApi = new apigw.HttpApi(this, 'HttpApi', { apiName: 'urlaubsplaner' });
 
     // ---------- CloudFront: page from S3, /api/* to the HTTP API ----------
     const apiHost = Fn.select(2, Fn.split('/', httpApi.apiEndpoint));
+    const apiOrigin = new origins.HttpOrigin(apiHost);
     const distribution = new cloudfront.Distribution(this, 'Cdn', {
       comment: 'Urlaubsplaner',
       defaultRootObject: 'index.html',
@@ -186,9 +231,18 @@ export class PlannerStack extends Stack {
       },
       additionalBehaviors: {
         '/api/*': {
-          origin: new origins.HttpOrigin(apiHost),
+          origin: apiOrigin,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          responseHeadersPolicy: headers,
+        },
+        // Calendar subscription: no login, the token in the address is checked by the API.
+        '/feed/*': {
+          origin: apiOrigin,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
           originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
           responseHeadersPolicy: headers,
@@ -238,6 +292,11 @@ export class PlannerStack extends Stack {
       methods: [apigw.HttpMethod.ANY],
       integration: new HttpLambdaIntegration('ApiIntegration', fn),
       authorizer: new HttpUserPoolAuthorizer('Login', userPool, { userPoolClients: [client] }),
+    });
+    httpApi.addRoutes({
+      path: '/feed/{token}',
+      methods: [apigw.HttpMethod.GET],
+      integration: new HttpLambdaIntegration('FeedIntegration', fn),
     });
 
     new s3deploy.BucketDeployment(this, 'DeploySite', {

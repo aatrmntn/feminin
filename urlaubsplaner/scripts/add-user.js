@@ -7,7 +7,6 @@
 // Prints a start password to hand over in person. At the first sign-in the person sets their
 // own password and connects an authenticator app. Needs AWS access to the practice account
 // and infra/cdk-outputs.json from `npm run deploy`.
-import { randomInt } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import {
@@ -15,6 +14,7 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { startPassword } from '../api/password.js';
 import { ROLES, WEEKDAYS, validateName } from '../api/rules.js';
 
 const REGION = 'eu-central-1';
@@ -53,19 +53,6 @@ try {
   fail('infra/cdk-outputs.json fehlt. Bitte zuerst `npm run deploy` ausführen.');
 }
 
-// Meets the password policy: upper, lower, digit, 16 characters, no look-alikes.
-function startPassword() {
-  const sets = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789'];
-  const all = sets.join('');
-  const chars = sets.map((s) => s[randomInt(s.length)]);
-  while (chars.length < 16) chars.push(all[randomInt(all.length)]);
-  for (let i = chars.length - 1; i > 0; i--) {
-    const j = randomInt(i + 1);
-    [chars[i], chars[j]] = [chars[j], chars[i]];
-  }
-  return chars.join('');
-}
-
 const cognito = new CognitoIdentityProviderClient({ region: REGION });
 const db = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }));
 const password = startPassword();
@@ -100,6 +87,7 @@ await db.send(new PutCommand({
     email: args.email || '',
     role: args.role,
     active: true,
+    approver: args.approver,
     workPattern: WEEKDAYS.filter((d) => workPattern.includes(d)),
     allowances: {},
     carryOver: {},
