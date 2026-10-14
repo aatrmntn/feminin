@@ -37,7 +37,36 @@ npm test
 Die Tests prüfen alle Regeln: Feiertage 2024–2030, Ostern, Teilzeit, halbe Tage,
 Urlaub über Neujahr, Überschneidungen und wer was sehen darf.
 
-## Auf AWS veröffentlichen
+## Auf AWS veröffentlichen, ganz einfach im Browser (CloudShell)
+
+Du brauchst nur den Zugang zum AWS-Konto der Praxis. Installieren musst du nichts.
+
+1. Melde dich unter <https://console.aws.amazon.com> an.
+2. Stell oben rechts die Region auf **Europa (Frankfurt) eu-central-1**.
+3. Klick oben in der Leiste auf das Symbol **CloudShell** (ein kleines Fenster mit `>_`).
+   Unten öffnet sich ein schwarzes Fenster. Dort tippst oder kopierst du die Befehle hinein
+   und drückst jeweils Enter.
+4. Einmal am Anfang:
+   ```bash
+   git clone https://github.com/aatrmntn/feminin.git
+   cd feminin/urlaubsplaner
+   npm install
+   (cd infra && npx cdk bootstrap)
+   ```
+5. Veröffentlichen (dauert beim ersten Mal etwa 10 Minuten):
+   ```bash
+   npm run deploy -- -c budgetEmail=a.tramontana@feminin.at
+   ```
+   Wenn gefragt wird `Do you wish to deploy these changes (y/n)?`, tippst du `y`.
+   Ganz am Ende steht `AppUrl = https://….cloudfront.net/`. **Das ist die Adresse des Planers.**
+6. Zugänge anlegen: siehe „Zugänge anlegen“ weiter unten.
+
+Bei einer neuen Version später nur noch:
+```bash
+cd feminin/urlaubsplaner && git pull && npm install && npm run deploy
+```
+
+## Auf AWS veröffentlichen, vom eigenen Computer
 
 Das macht eine Person mit Zugang zum AWS-Konto der Praxis, einmal am Anfang und danach
 bei jeder neuen Version. Alles läuft in Frankfurt (eu-central-1).
@@ -62,7 +91,9 @@ npm run deploy -- -c budgetEmail=a.tramontana@feminin.at
 Am Ende steht die Adresse der App (`AppUrl`), z. B. `https://d1234abcd.cloudfront.net/`.
 Falls die Login-Adresse `feminin-urlaub` schon vergeben ist: `-c domainPrefix=feminin-urlaub-2`.
 
-Zugänge anlegen, einmal pro Person:
+## Zugänge anlegen
+
+Einmal pro Person, im selben Fenster und im Ordner `feminin/urlaubsplaner`:
 
 ```bash
 npm run user:add -- --username anna --name "Anna" --role frontoffice
