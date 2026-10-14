@@ -1,100 +1,28 @@
-// "Mein Kalender": year and month view, balance, own entries and the entry drawer.
+// "Mein Kalender": year and month view, balance, own entries and the entry drawer,
+// plus the page switch to the team view and the requests inbox.
 // The browser never counts days; numbers come from the API (/api/overview, /api/check).
-// All text is set with textContent / text nodes, never as HTML.
+import { devSignIn, devUsers, initAuth, isSignedIn, signIn, signOut } from './auth.js';
 import {
-  authHeaders, devSignIn, devUsers, initAuth, isSignedIn, refresh, signIn, signOut,
-} from './auth.js';
-
-const MONTHS = ['Jänner', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August',
-  'September', 'Oktober', 'November', 'Dezember'];
-const WEEKDAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
-const WD_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-const STATUS = { pending: 'beantragt', approved: 'bestätigt', declined: 'abgelehnt' };
-const HALF = { am: 'Vormittag', pm: 'Nachmittag' };
+  HALF, MONTHS, STATUS, WD_KEYS, WEEKDAYS, addDays, api, days, h, isoOf, kindText as kindLabel,
+  longDate, num, onSignedOut, rangeText, showToast, weekdayIndex,
+} from './ui.js';
+import { requestsPage } from './requests.js';
+import { teamPage } from './team.js';
 
 const main = document.getElementById('main');
 const topActions = document.getElementById('top-actions');
 const drawer = document.getElementById('drawer');
 const nameDialog = document.getElementById('name-dialog');
-const toast = document.getElementById('toast');
 
 const state = { year: null, view: 'year', month: 0, data: null, drag: null, suppressClick: false };
 
-// ---------- small helpers ----------
-
-function h(tag, props = {}, ...children) {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(props)) {
-    if (v == null || v === false) continue;
-    if (k === 'class') el.className = v;
-    else if (k === 'dataset') Object.assign(el.dataset, v);
-    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
-    else if (k === 'value') el.value = v;
-    else if (k === 'checked') el.checked = true;
-    else el.setAttribute(k, v === true ? '' : String(v));
-  }
-  for (const c of children.flat()) {
-    if (c == null || c === false) continue;
-    el.append(c instanceof Node ? c : String(c));
-  }
-  return el;
-}
-
-const num = (n) => n.toLocaleString('de-AT', { maximumFractionDigits: 1 });
-const days = (n) => `${num(n)} ${n === 1 ? 'Tag' : 'Tage'}`;
-const isoOf = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-const dateOf = (iso) => new Date(`${iso}T00:00:00Z`);
-const weekdayIndex = (iso) => (dateOf(iso).getUTCDay() + 6) % 7; // Monday = 0
-
-function addDays(iso, n) {
-  const d = dateOf(iso);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
-function longDate(iso, withYear = true) {
-  const d = dateOf(iso);
-  return `${d.getUTCDate()}. ${MONTHS[d.getUTCMonth()]}${withYear ? ` ${d.getUTCFullYear()}` : ''}`;
-}
-
-function rangeText(e) {
-  if (e.start === e.end) return `${longDate(e.start)}${e.half ? `, ${HALF[e.half]}` : ''}`;
-  const sameYear = e.start.slice(0, 4) === e.end.slice(0, 4);
-  return `${longDate(e.start, !sameYear)} – ${longDate(e.end)}`;
-}
-
-function kindText(e) {
-  if (e.kind === 'vacation') return e.half ? 'Urlaub, halber Tag' : 'Urlaub';
-  return state.data.reasons[e.reason] || 'Abwesenheit';
-}
-
-function showToast(text) {
-  toast.textContent = text;
-  toast.classList.add('show');
-  clearTimeout(showToast.t);
-  showToast.t = setTimeout(() => toast.classList.remove('show'), 4000);
-}
-
-async function api(method, path, body) {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const headers = { ...(await authHeaders()) };
-    if (body !== undefined) headers['content-type'] = 'application/json';
-    const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-    if (res.status === 401 && attempt === 0 && await refresh()) continue;
-    if (res.status === 401) {
-      showSignedOut();
-      throw Object.assign(new Error('Bitte melde dich wieder an.'), { status: 401 });
-    }
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw Object.assign(new Error(data.error || 'Etwas ist schiefgelaufen.'), { status: res.status });
-    return data.item;
-  }
-  return null;
-}
+const kindText = (e) => kindLabel(e, state.data.reasons);
 
 // ---------- start ----------
 
 async function start() {
+  onSignedOut(showSignedOut);
+  window.addEventListener('hashchange', () => { if (state.data) render(); });
   try {
     await initAuth();
   } catch {
@@ -148,15 +76,42 @@ async function load(year = state.year) {
 
 // ---------- page ----------
 
+function currentPage() {
+  const page = location.hash.slice(1);
+  if (page === 'team') return page;
+  if (page === 'antraege' && state.data.me.canApprove) return page;
+  return 'me';
+}
+
+function renderNav(page) {
+  const d = state.data;
+  const link = (href, id, ...label) => h('a', { href, class: 'tab', 'aria-current': page === id ? 'page' : null }, ...label);
+  return h('nav', { class: 'tabs', 'aria-label': 'Bereiche' },
+    link('#', 'me', 'Mein Kalender'),
+    link('#team', 'team', 'Team'),
+    d.me.canApprove ? link('#antraege', 'antraege', 'Anträge',
+      d.openRequests ? h('span', { class: 'count', 'aria-label': `${d.openRequests} offen` }, String(d.openRequests)) : null) : null);
+}
+
 function render() {
   const d = state.data;
   topActions.replaceChildren(
     h('button', { class: 'link', type: 'button', onclick: openNameDialog }, d.me.name),
     h('button', { class: 'button small', type: 'button', onclick: signOut }, 'Abmelden'),
   );
+  const page = currentPage();
+  if (page === 'team') {
+    main.replaceChildren(renderNav(page), teamPage({ today: d.today, myId: d.me.userId }));
+    return;
+  }
+  if (page === 'antraege') {
+    main.replaceChildren(renderNav(page), requestsPage({ onDecided: () => load() }));
+    return;
+  }
 
   const focusDate = document.activeElement?.dataset?.date;
   main.replaceChildren(
+    renderNav(page),
     h('section', { class: 'intro' },
       h('h1', {}, `Hallo ${d.me.name}`),
       h('p', { class: 'hint' }, `${d.me.roleLabel ? `${d.me.roleLabel} · ` : ''}Deine Arbeitstage: `,
@@ -392,6 +347,7 @@ function renderEntries() {
       h('span', { class: 'entry-dates' }, rangeText(e)),
       h('span', { class: 'entry-kind' }, kindText(e), e.kind === 'vacation' ? ` · ${days(e.days)}` : ''),
       e.note ? h('span', { class: 'entry-note' }, e.note) : null,
+      e.decisionComment ? h('span', { class: 'entry-note' }, `Praxisleitung: ${e.decisionComment}`) : null,
       h('span', { class: `badge ${e.status}` }, STATUS[e.status]))))));
   return section;
 }
@@ -418,6 +374,7 @@ function openDrawer(entry, start, end = start) {
   note.value = e.note || '';
   const counter = h('span', { class: 'counter' });
   const summary = h('p', { class: 'summary', 'aria-live': 'polite' });
+  const warning = h('p', { class: 'notice warning', 'aria-live': 'polite' });
   const error = h('p', { class: 'error', role: 'alert' });
   const halfField = h('fieldset', { class: 'choices' }, h('legend', {}, 'Dauer'),
     radio('half', '', 'Ganzer Tag', !e.half),
@@ -444,6 +401,8 @@ function openDrawer(entry, start, end = start) {
       h('label', { for: 'f-note' }, 'Notiz ', h('span', { class: 'hint' }, '(sehen nur du und die Praxisleitung)')),
       note, counter),
     summary,
+    warning,
+    !isNew && e.decisionComment ? h('p', { class: 'hint' }, `Kommentar der Praxisleitung: ${e.decisionComment}`) : null,
     error,
     h('div', { class: 'actions' },
       locked ? null : saveBtn,
@@ -485,6 +444,9 @@ function openDrawer(entry, start, end = start) {
       if (seq !== checkSeq || !res) return;
       summary.classList.toggle('warn', !res.ok);
       summary.textContent = res.ok ? summaryText(v, res) : res.error;
+      warning.textContent = res.ok && res.warningText
+        ? `Achtung: ${res.warningText} Du kannst trotzdem eintragen. Die Praxisleitung sieht den Hinweis.`
+        : '';
     } catch {
       // the live summary is optional; saving shows any real error
     }

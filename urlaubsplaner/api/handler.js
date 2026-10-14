@@ -3,8 +3,13 @@
 import { createApp } from './app.js';
 import { createDynamoDb } from './db-dynamo.js';
 import { userFromClaims } from './claims.js';
+import { createMailer } from './mail.js';
 
-const app = createApp({ db: createDynamoDb() });
+const app = createApp({
+  db: createDynamoDb(),
+  notify: process.env.MAIL_FROM ? createMailer(process.env.MAIL_FROM) : null,
+  appUrl: process.env.APP_URL || '',
+});
 
 const HEADERS = {
   'content-type': 'application/json; charset=utf-8',

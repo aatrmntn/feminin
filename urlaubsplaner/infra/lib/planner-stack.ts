@@ -14,9 +14,11 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
+import * as ses from 'aws-cdk-lib/aws-ses';
 import type { Construct } from 'constructs';
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -26,6 +28,8 @@ export interface PlannerStackProps extends StackProps {
   domainPrefix: string;
   /** Optional: who gets an email when costs pass 10 USD in a month. */
   budgetEmail?: string;
+  /** Optional: sender address for request emails, e.g. office@feminin.at. */
+  mailFrom?: string;
 }
 
 export class PlannerStack extends Stack {
@@ -192,6 +196,19 @@ export class PlannerStack extends Stack {
       },
     });
     const appUrl = `https://${distribution.distributionDomainName}/`;
+    fn.addEnvironment('APP_URL', appUrl);
+
+    // ---------- email (optional) ----------
+    // AWS sends a confirmation link to the sender address. While SES is in its test mode
+    // ("sandbox"), every recipient address has to be confirmed the same way (README).
+    if (props.mailFrom) {
+      new ses.EmailIdentity(this, 'MailFrom', { identity: ses.Identity.email(props.mailFrom) });
+      fn.addEnvironment('MAIL_FROM', props.mailFrom);
+      fn.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['ses:SendEmail'],
+        resources: [`arn:aws:ses:${this.region}:${this.account}:identity/*`],
+      }));
+    }
 
     const client = userPool.addClient('Web', {
       generateSecret: false,

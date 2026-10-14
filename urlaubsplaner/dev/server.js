@@ -13,14 +13,15 @@ const PORT = Number(process.env.PORT) || 8080;
 const WEB = fileURLToPath(new URL('../web/', import.meta.url));
 const FULL = ['mon', 'tue', 'wed', 'thu', 'fri'];
 
+// Shaped like the practice: three in the front office, one part-time in the back office
+// (Friday off), two owners who approve. Names are made up.
 const team = [
   { userId: 'dev-fo1', name: 'Anna', role: 'frontoffice', groups: ['staff'], workPattern: FULL },
   { userId: 'dev-fo2', name: 'Bea', role: 'frontoffice', groups: ['staff'], workPattern: FULL },
-  { userId: 'dev-fo3', name: 'Clara', role: 'frontoffice', groups: ['staff'], workPattern: ['mon', 'tue', 'thu'] },
-  { userId: 'dev-fo4', name: 'Dora', role: 'frontoffice', groups: ['staff'], workPattern: ['mon', 'tue', 'wed', 'thu'] },
-  { userId: 'dev-bo1', name: 'Eva', role: 'backoffice', groups: ['staff'], workPattern: FULL },
-  { userId: 'dev-ow1', name: 'Leitung A', role: 'owner', groups: ['approver'], workPattern: FULL },
-  { userId: 'dev-ow2', name: 'Leitung B', role: 'owner', groups: ['approver'], workPattern: FULL },
+  { userId: 'dev-fo3', name: 'Clara', role: 'frontoffice', groups: ['staff'], workPattern: FULL },
+  { userId: 'dev-bo1', name: 'Dora', role: 'backoffice', groups: ['staff'], workPattern: ['mon', 'tue', 'wed', 'thu'] },
+  { userId: 'dev-ow1', name: 'Leitung A', role: 'owner', groups: ['approver'], workPattern: FULL, email: 'leitung-a@example.at' },
+  { userId: 'dev-ow2', name: 'Leitung B', role: 'owner', groups: ['approver'], workPattern: FULL, email: 'leitung-b@example.at' },
 ];
 const LABELS = { frontoffice: 'Frontoffice', backoffice: 'Backoffice', owner: 'Leitung, genehmigt' };
 
@@ -40,10 +41,19 @@ const db = createMemoryDb({
     seed(2, 'dev-fo1', `${year}-07-27`, `${year}-08-07`),
     seed(3, 'dev-fo1', `${year}-03-13`, `${year}-03-13`, { half: 'pm' }),
     seed(4, 'dev-fo1', `${year}-05-20`, `${year}-05-21`, { kind: 'absence', reason: 'training', note: 'Kurs Abrechnung' }),
-    seed(5, 'dev-fo1', addDays(today, 30), addDays(today, 34), { status: 'pending' }),
+    seed(5, 'dev-fo1', addDays(today, 30), addDays(today, 34), { status: 'pending', note: 'Hochzeit Schwester' }),
+    seed(6, 'dev-fo2', addDays(today, 33), addDays(today, 34)),
+    seed(7, 'dev-fo3', addDays(today, 35), addDays(today, 37), { status: 'pending' }),
+    seed(8, 'dev-bo1', addDays(today, 1), addDays(today, 2), { kind: 'absence', reason: 'training' }),
+    seed(9, 'dev-ow2', addDays(today, 5), addDays(today, 5), { half: 'am' }),
+    seed(10, 'dev-fo2', today, today),
   ],
 });
-const app = createApp({ db });
+// Emails are only printed here, never sent.
+const notify = async ({ to, subject, text }) => {
+  console.log(`\n[E-Mail, Testversion] an ${to.join(', ')}: ${subject}\n${text}\n`);
+};
+const app = createApp({ db, notify, appUrl: `http://localhost:${PORT}/` });
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',

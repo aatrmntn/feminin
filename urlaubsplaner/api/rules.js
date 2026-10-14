@@ -260,6 +260,80 @@ function splitTakenPlanned(entry, pattern, closed, year, today) {
   return { taken, planned };
 }
 
+// ---------- minimum staffing ----------
+
+// Is the practice open on this day (opening weekday, no public holiday, no closure)?
+export function isOpenDay(iso, settings = DEFAULT_SETTINGS, closed = new Set()) {
+  return settings.openDays.includes(weekdayOf(iso)) && !holidayName(iso) && !closed.has(iso);
+}
+
+// Is this person away at that time of day? Both vacation and other absences count.
+function awayAt(entries, iso, half) {
+  return entries.some((e) => e.start <= iso && e.end >= iso && (!e.half || e.half === half));
+}
+
+// Who is in, per role with a minimum, for each day. A half-day absence counts for its half,
+// and the weaker half decides. entries: everyone's entries that should count as away.
+// Returns Map(date → { open, roles: { role: { present, required } }, below }).
+export function staffing({ dates, people, entries, closures = [], settings = DEFAULT_SETTINGS }) {
+  const closed = closureDays(closures);
+  const minimum = settings.minimumStaffing || {};
+  const byPerson = new Map();
+  for (const e of entries) {
+    if (!['vacation', 'absence'].includes(e.kind)) continue;
+    if (!byPerson.has(e.userId)) byPerson.set(e.userId, []);
+    byPerson.get(e.userId).push(e);
+  }
+  const result = new Map();
+  for (const iso of dates) {
+    if (!isOpenDay(iso, settings, closed)) {
+      result.set(iso, { open: false, roles: {}, below: false });
+      continue;
+    }
+    const wd = weekdayOf(iso);
+    const roles = {};
+    let below = false;
+    for (const [role, required] of Object.entries(minimum)) {
+      const members = people.filter((p) => p.active !== false && p.role === role
+        && normalizePattern(p.workPattern).includes(wd));
+      const presentAt = (half) => members.filter((p) => !awayAt(byPerson.get(p.userId) || [], iso, half)).length;
+      const present = Math.min(presentAt('am'), presentAt('pm'));
+      roles[role] = { present, required };
+      if (present < required) below = true;
+    }
+    result.set(iso, { open: true, roles, below });
+  }
+  return result;
+}
+
+// Days on which this entry leaves the owner's role below its minimum, counting the
+// approved entries of everyone else. Returns [{ date, role, present, required }].
+export function staffingWarnings({ entry, owner, people, entries, closures = [], settings = DEFAULT_SETTINGS }) {
+  const required = settings.minimumStaffing?.[owner.role];
+  if (!required) return [];
+  const pattern = normalizePattern(owner.workPattern);
+  const dates = [];
+  eachDay(entry.start, entry.end, (d) => { if (pattern.includes(weekdayOf(d))) dates.push(d); });
+  const counted = entries.filter((e) => e.status === 'approved' && e.id !== entry.id && e.userId !== owner.userId)
+    .concat({ ...entry, userId: owner.userId });
+  const map = staffing({ dates, people, entries: counted, closures, settings });
+  return dates
+    .filter((d) => map.get(d).open && map.get(d).roles[owner.role]?.present < required)
+    .map((d) => ({ date: d, role: owner.role, ...map.get(d).roles[owner.role] }));
+}
+
+export function describeWarnings(warnings) {
+  if (!warnings.length) return '';
+  const role = ROLES[warnings[0].role] || warnings[0].role;
+  const worst = Math.min(...warnings.map((w) => w.present));
+  const { required } = warnings[0];
+  const days = warnings.length === 1
+    ? `Am ${formatDay(warnings[0].date)}`
+    : `An ${warnings.length} Tagen (${formatRange(warnings[0].date, warnings.at(-1).date)})`;
+  const who = worst === 0 ? 'wäre im ROLE niemand' : worst === 1 ? 'wäre im ROLE nur 1 Person' : `wären im ROLE nur ${worst} Personen`;
+  return `${days} ${who.replace('ROLE', role)} da. Gebraucht werden ${required}.`;
+}
+
 // ---------- validation ----------
 
 export function overlaps(a, b) {

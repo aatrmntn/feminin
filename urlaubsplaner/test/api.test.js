@@ -153,9 +153,11 @@ test('staff cannot change or delete approved entries that already started; appro
 test('check: days and what is left, without writing', async () => {
   const { call, db } = setup([approvedFuture]);
   const res = await call(ANNA, 'POST', '/api/check', { kind: 'vacation', start: '2026-12-28', end: '2027-01-08' });
-  assert.deepEqual(res.body.item, {
+  const { warnings, warningText, ...rest } = res.body.item;
+  assert.deepEqual(rest, {
     ok: true, days: 8, byYear: { 2026: 4, 2027: 4 }, remainingAfter: { 2026: 18, 2027: 21 },
   });
+  assert.equal(warnings.length, 8, 'with only two people in the front office, every day of Anna\'s is short');
   const err = await call(ANNA, 'POST', '/api/check', { kind: 'vacation', start: '2026-12-22' });
   assert.equal(err.body.item.ok, false);
   assert.match(err.body.item.error, /überschneidet/);

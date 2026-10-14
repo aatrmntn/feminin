@@ -43,6 +43,14 @@ patient discovery page and has nothing to do with it.
 - `POST /api/check` gives the drawer its live summary, so the browser never counts.
 - Deleting an entry removes it; the audit log keeps the record (without the note).
   The `withdrawn` status is reserved for Phase 2, when approvers see requests.
-- Phase 1 stores new entries as `pending`; approving comes in Phase 2.
 - Login page: Cognito managed login (newer version), which handles first-time password
   change and authenticator setup. The browser uses the code flow with PKCE (web/auth.js).
+- Approvers cannot decide their own request; the other owner does (two owners exist).
+- Staffing warnings count everyone else's *approved* entries plus the request itself.
+  The team view shows two levels: below the minimum now (red) and below once all pending
+  requests are approved (outlined).
+- A half-day absence counts against staffing for its half; the weaker half decides.
+- Emails (SES, optional via `-c mailFrom=`) only go to people with an address in their
+  profile, i.e. the owners. They never contain notes. A failed email never fails a request.
+- Real staff names never go into this repository (it is public). Dev and test data use
+  made-up names.

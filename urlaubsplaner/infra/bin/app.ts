@@ -8,5 +8,6 @@ new PlannerStack(app, 'Urlaubsplaner', {
   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: 'eu-central-1' },
   domainPrefix: app.node.tryGetContext('domainPrefix') ?? 'feminin-urlaub',
   budgetEmail: app.node.tryGetContext('budgetEmail'),
+  mailFrom: app.node.tryGetContext('mailFrom'),
   description: 'Urlaubsplaner der Ordination feminin',
 });

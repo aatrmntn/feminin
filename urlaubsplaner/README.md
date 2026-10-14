@@ -15,7 +15,21 @@ Der ganze Plan steht in `PLAN.md`, die Antworten auf die offenen Fragen in `CLAU
 - Beim Eintragen siehst du sofort: „3 Urlaubstage. Danach bleiben dir 19 Tage.“
 - Urlaubskonto mit Anspruch, genommen, geplant, beantragt und übrig
 - Teilzeit: Wer z. B. nur Mo, Di, Do arbeitet, hat 15 statt 25 Tage, und nur diese Tage zählen
-- Neue Einträge stehen auf „beantragt“. Das Genehmigen kommt in Phase 2.
+- Neue Einträge stehen auf „beantragt“, bis die Praxisleitung sie bestätigt.
+
+## Neu in Phase 2
+
+- **Team:** ein Monat als Tabelle, alle Personen untereinander, nach Bereich sortiert.
+  Oben die Zeile „Frontoffice da“: rot, wenn weniger als 2 da sind, rot umrandet, wenn es
+  zu wenig wären, sobald alle offenen Anträge bestätigt werden. Dazu „Heute weg“ und
+  „Diese Woche weg“, eine Suche nach Namen und ein Filter nach Bereich.
+  Notizen sieht man hier nie.
+- **Warnung beim Eintragen:** „Achtung: Am 16. November wäre im Frontoffice nur 1 Person da.“
+  Eintragen geht trotzdem, die Praxisleitung sieht den Hinweis.
+- **Anträge** (nur für die Besitzer:innen): alle offenen Anträge mit Notiz und Warnung,
+  Bestätigen oder Ablehnen mit Kommentar. Den eigenen Antrag bestätigt die andere Person.
+- **E-Mail:** Bei einem neuen Antrag bekommen die Besitzer:innen eine Mail, ohne Notiz.
+  Das Frontoffice hat keine eigenen Adressen und sieht die Entscheidung im Planer.
 
 ## Selbst ausprobieren, ohne AWS
 
@@ -61,9 +75,21 @@ Du brauchst nur den Zugang zum AWS-Konto der Praxis. Installieren musst du nicht
    Ganz am Ende steht `AppUrl = https://….cloudfront.net/`. **Das ist die Adresse des Planers.**
 6. Zugänge anlegen: siehe „Zugänge anlegen“ weiter unten.
 
+E-Mails einschalten (freiwillig): beim Veröffentlichen die Absender-Adresse dazuschreiben.
+```bash
+npm run deploy -- -c budgetEmail=a.tramontana@feminin.at -c mailFrom=office@feminin.at
+```
+AWS schickt an office@feminin.at eine Mail mit einem Bestätigungslink. Bitte anklicken.
+Solange AWS den Mailversand im Testmodus hat („Sandbox“), müssen auch die Empfänger
+bestätigt sein: In der AWS-Konsole unter **Amazon SES → Identitäten → Identität erstellen**
+die Adressen a.tramontana@feminin.at und p.horak@feminin.at eintragen und die Links in
+den Mails anklicken. Wichtig: Immer dieselben `-c …`-Angaben verwenden, sonst werden die
+Mails beim nächsten Veröffentlichen wieder ausgeschaltet.
+
 Bei einer neuen Version später nur noch:
 ```bash
-cd feminin/urlaubsplaner && git pull && npm install && npm run deploy
+cd feminin/urlaubsplaner && git pull && npm install
+npm run deploy -- -c budgetEmail=a.tramontana@feminin.at -c mailFrom=office@feminin.at
 ```
 
 ## Auf AWS veröffentlichen, vom eigenen Computer
@@ -125,8 +151,6 @@ Die Praxisleitung setzt dann in der AWS-Konsole unter Cognito ein neues Start-Pa
 
 ## Nächste Schritte
 
-- **Phase 2:** Teamansicht mit Mindestbesetzung (Frontoffice mindestens 2), Anträge
-  genehmigen oder ablehnen, E-Mail an die Besitzer:innen
 - **Phase 3:** Betriebsurlaub mit Aushang für die Tür, Einstellungen und Personen in der
   App verwalten, Resttage aus dem Vorjahr (verfallen am 31. März), Kalender-Abo für
   Outlook, Google und iPhone, jährliches Löschen alter Daten
