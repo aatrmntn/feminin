@@ -5,7 +5,7 @@
 //   npm run user:add -- --username horak --name "P. Horak" --role owner --approver --email p.horak@feminin.at
 //
 // Prints a start password to hand over in person. At the first sign-in the person sets their
-// own password and connects an authenticator app. Needs AWS access to the practice account
+// own password. Needs AWS access to the practice account
 // and infra/cdk-outputs.json from `npm run deploy`.
 import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
@@ -105,5 +105,5 @@ Zugang angelegt für ${name}
   Darf genehmigen: ${args.approver ? 'ja' : 'nein'}
 
 Beim ersten Anmelden unter ${outputs.AppUrl}
-wählt ${name} ein eigenes Passwort und verbindet eine Authenticator-App am Handy.
+wählt ${name} ein eigenes Passwort (mindestens 12 Zeichen).
 `);

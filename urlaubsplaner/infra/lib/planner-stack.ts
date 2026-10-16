@@ -78,7 +78,8 @@ export class PlannerStack extends Stack {
 
     // ---------- login ----------
     // Invite only. Sign-in with a username (not everyone has their own email),
-    // password plus an authenticator app (TOTP). No SMS.
+    // and password only. The owners switched the authenticator app off on 16 Oct 2026
+    // (too much hassle at the front desk); long passwords make up for it.
     const userPool = new cognito.UserPool(this, 'Users', {
       userPoolName: 'urlaubsplaner',
       featurePlan: cognito.FeaturePlan.ESSENTIALS,
@@ -86,8 +87,7 @@ export class PlannerStack extends Stack {
       signInAliases: { username: true },
       signInCaseSensitive: false,
       standardAttributes: { email: { required: false, mutable: true } },
-      mfa: cognito.Mfa.REQUIRED,
-      mfaSecondFactor: { otp: true, sms: false },
+      mfa: cognito.Mfa.OFF,
       passwordPolicy: {
         minLength: 12,
         requireLowercase: true,

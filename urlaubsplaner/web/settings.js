@@ -231,7 +231,7 @@ function showPassword(person, password) {
     h('dl', { class: 'credentials' },
       h('dt', {}, 'Benutzername'), h('dd', {}, h('code', {}, person.username)),
       h('dt', {}, 'Start-Passwort'), h('dd', {}, h('code', {}, password))),
-    h('p', { class: 'hint' }, 'Das Start-Passwort gilt 7 Tage. Beim ersten Anmelden wählt die Person ein eigenes Passwort und verbindet eine Authenticator-App am Handy.'),
+    h('p', { class: 'hint' }, 'Das Start-Passwort gilt 7 Tage. Beim ersten Anmelden wählt die Person ein eigenes Passwort (mindestens 12 Zeichen).'),
     h('div', { class: 'actions' }, h('button', { class: 'button primary', type: 'button', onclick: () => dialog.close() }, 'Fertig')));
 }
 

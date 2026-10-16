@@ -10,7 +10,7 @@ Der ganze Plan steht in `PLAN.md`, die Antworten auf die offenen Fragen in `CLAU
 
 ## Was schon geht (Phase 1)
 
-- Anmelden mit Benutzername, Passwort und Code-App am Handy
+- Anmelden mit Benutzername und Passwort
 - Eigener Kalender als Jahres- oder Monatsansicht, mit Feiertagen in Österreich
 - Urlaub oder andere Abwesenheit eintragen: Fortbildung, Kongress, Berufsschule, Sonstiges.
   Auch halbe Tage. Im Kalender auf einen Tag klicken oder mit der Maus über mehrere Tage ziehen.
@@ -150,8 +150,8 @@ hinzufügen**. Das geht auch mit dem Befehl oben (`--role frontoffice`, `backoff
 `owner`, Teilzeit mit z. B. `--pattern mon,tue,wed,thu`).
 
 Der Planer oder das Werkzeug zeigt ein Start-Passwort an. Gib es der Person persönlich. Beim ersten
-Anmelden wählt sie ein eigenes Passwort und verbindet eine Authenticator-App, zum Beispiel
-Google Authenticator oder Microsoft Authenticator.
+Anmelden wählt sie ein eigenes Passwort (mindestens 12 Zeichen, mit Groß- und
+Kleinbuchstaben und einer Zahl). Eine Code-App am Handy braucht es nicht.
 
 Für Personen ohne eigene E-Mail-Adresse gibt es kein „Passwort vergessen“ per Mail.
 Die Praxisleitung setzt dann in der AWS-Konsole unter Cognito ein neues Start-Passwort.
