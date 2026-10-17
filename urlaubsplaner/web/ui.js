@@ -106,12 +106,15 @@ export function weekdayDate(iso) {
 
 // A notice for the door and the website, printed on its own page.
 // notice: { title, lines: [text], footer }
-export function printNotice({ title, lines, footer }) {
+export async function printNotice({ title, lines, footer }) {
   const area = document.getElementById('print-area');
+  const logo = h('img', { class: 'notice-logo', src: 'logo.png', alt: 'feminin – Frau* Mutter* Kind' });
   area.replaceChildren(h('article', { class: 'notice-sheet' },
+    logo,
     h('h1', {}, title),
     lines.filter(Boolean).map((l) => h('p', {}, l)),
     footer ? h('p', { class: 'notice-footer' }, footer) : null));
+  await logo.decode().catch(() => {}); // print with the logo, or without if it fails to load
   window.print();
 }
 

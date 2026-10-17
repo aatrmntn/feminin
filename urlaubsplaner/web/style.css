@@ -8,6 +8,7 @@
   --muted: #7A5D50;
   --accent: #76351F;
   --accent-2: #93604A;
+  --logo: #7F5E4F;
   --on-accent: #FFFFFF;
   --vacation: #93604A;
   --vacation-soft: #E9D3C6;
@@ -37,6 +38,7 @@
     --muted: #C9B2A5;
     --accent: #EFC2A6;
     --accent-2: #D29B7F;
+    --logo: #D29B7F;
     --on-accent: #1D1512;
     --vacation: #D29B7F;
     --vacation-soft: #5A3F33;
@@ -83,9 +85,18 @@ h3 { font-size: 1.05rem; }
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;
   padding: .75rem 16px; border-bottom: 1px solid var(--line); background: var(--surface);
 }
-.brand { display: flex; align-items: center; gap: .6rem; font-family: var(--display); font-size: 1.2rem; color: var(--accent); }
-.brand-sub { color: var(--muted); font-size: .95rem; }
-.logo { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-2); flex: none; }
+.brand { display: flex; align-items: center; gap: .65rem; color: var(--logo); }
+/* The practice logo: the sign is inline SVG, the wordmark a cut-out of the original
+   artwork used as a mask, so both take the theme colour (light and dark). */
+.logo { width: 34px; height: 34px; flex: none; color: var(--logo); }
+.wordmark {
+  display: block; width: 112px; height: 22px; flex: none; background: var(--logo);
+  -webkit-mask: url(wordmark.png) no-repeat center / contain; mask: url(wordmark.png) no-repeat center / contain;
+}
+.brand-sub {
+  color: var(--muted); font-family: var(--display); font-size: 1rem;
+  padding-left: .65rem; border-left: 1px solid var(--line);
+}
 .top-actions { display: flex; align-items: center; gap: .75rem; min-width: 0; }
 .top-actions .link { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -430,7 +441,8 @@ input[type="number"] {
   body { background: #fff; color: #000; }
   body > *:not(.print-area) { display: none !important; }
   .print-area { display: block; }
-  .notice-sheet { font-family: var(--display); text-align: center; padding: 3cm 1.5cm; }
+  .notice-sheet { font-family: var(--display); text-align: center; padding: 1.5cm 1.5cm 3cm; }
+  .notice-logo { display: block; width: 4.5cm; height: auto; margin: 0 auto 1.5cm; }
   .notice-sheet h1 { font-size: 40pt; color: #000; margin-bottom: 1.2cm; }
   .notice-sheet p { font-family: var(--font); font-size: 20pt; line-height: 1.4; margin: 0 0 .6cm; }
   .notice-sheet .notice-footer { margin-top: 2cm; font-size: 16pt; }
