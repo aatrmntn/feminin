@@ -46,7 +46,7 @@ patient discovery page and has nothing to do with it.
 - `POST /api/check` gives the drawer its live summary, so the browser never counts.
 - Deleting an entry removes it; the audit log keeps the record (without the note).
   The `withdrawn` status is reserved for Phase 2, when approvers see requests.
-- Login page: Cognito managed login (newer version), which handles first-time password
+- Login page: Cognito managed login (newer version, with the feminin logo), which handles first-time password
   change. The browser uses the code flow with PKCE (web/auth.js).
 - Approvers cannot decide their own request; the other owner does (two owners exist).
 - Staffing warnings count everyone else's *approved* entries plus the request itself.
@@ -94,3 +94,8 @@ patient discovery page and has nothing to do with it.
   be quarantined). The 3 DKIM CNAMEs are stack outputs for the domain host. A verified
   domain also lets every feminin.at address receive mail in the SES sandbox.
   POST /api/mail-test (approvers) sends a test mail to the caller's own address.
+- Logo (17 Oct 2026): the real feminin logo. Header sign = inline SVG rebuilt from the
+  artwork (colour #7F5E4F, var(--logo)), wordmark = web/wordmark.png used as a CSS mask,
+  web/logo.png (full logo) on printed notices, web/icon.svg as favicon. The Cognito login
+  page gets the logo, favicon and brown main button via CfnManagedLoginBranding (settings
+  list only the differences from Cognito's defaults).
