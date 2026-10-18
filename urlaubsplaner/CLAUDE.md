@@ -98,4 +98,5 @@ patient discovery page and has nothing to do with it.
   artwork (colour #7F5E4F, var(--logo)), wordmark = web/wordmark.png used as a CSS mask,
   web/logo.png (full logo) on printed notices, web/icon.svg as favicon. The Cognito login
   page gets the logo, favicon and brown main button via CfnManagedLoginBranding (settings
-  list only the differences from Cognito's defaults).
+  list only the differences from Cognito's defaults). Cognito wants logos between 1:1 and
+  4:1 (width:height), so infra/assets/login-logo.png is the sign and wordmark side by side.
