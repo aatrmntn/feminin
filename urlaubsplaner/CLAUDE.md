@@ -46,7 +46,7 @@ patient discovery page and has nothing to do with it.
 - `POST /api/check` gives the drawer its live summary, so the browser never counts.
 - Deleting an entry removes it; the audit log keeps the record (without the note).
   The `withdrawn` status is reserved for Phase 2, when approvers see requests.
-- Login page: Cognito managed login (newer version, with the feminin logo), which handles first-time password
+- Login page: Cognito managed login (newer version, default style), which handles first-time password
   change. The browser uses the code flow with PKCE (web/auth.js).
 - Approvers cannot decide their own request; the other owner does (two owners exist).
 - Staffing warnings count everyone else's *approved* entries plus the request itself.
@@ -96,7 +96,7 @@ patient discovery page and has nothing to do with it.
   POST /api/mail-test (approvers) sends a test mail to the caller's own address.
 - Logo (17 Oct 2026): the real feminin logo. Header sign = inline SVG rebuilt from the
   artwork (colour #7F5E4F, var(--logo)), wordmark = web/wordmark.png used as a CSS mask,
-  web/logo.png (full logo) on printed notices, web/icon.svg as favicon. The Cognito login
-  page gets the logo, favicon and brown main button via CfnManagedLoginBranding (settings
-  list only the differences from Cognito's defaults). Cognito wants logos between 1:1 and
-  4:1 (width:height), so infra/assets/login-logo.png is the sign and wordmark side by side.
+  web/logo.png (full logo) on printed notices, web/icon.svg as favicon. A branded Cognito
+  login page (CfnManagedLoginBranding with FORM_LOGO infra/assets/login-logo.png, ratio
+  1:1–4:1 required) failed on deploy twice, so the login page keeps Cognito's default
+  style for now. Retry only with the exact CloudFormation error in hand.

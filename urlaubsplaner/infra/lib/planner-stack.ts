@@ -1,7 +1,6 @@
 // Everything the planner needs on AWS, in eu-central-1 (Frankfurt):
-// Cognito login with MFA, DynamoDB tables, one Lambda behind an HTTP API,
+// Cognito login (password only), DynamoDB tables, one Lambda behind an HTTP API,
 // and the web page on S3 + CloudFront. The API is served under the same address (/api/*).
-import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import {
   CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps,
@@ -290,30 +289,12 @@ export class PlannerStack extends Stack {
       idTokenValidity: Duration.hours(1),
       refreshTokenValidity: Duration.hours(12),
     });
-    // The newer hosted login page needs a style. Cognito's default, plus the feminin logo
-    // above the form, the logo as tab icon and the brand brown on the main button.
-    // Settings only list what differs from the default; Cognito fills in the rest.
-    const asset = (category: string, extension: string, file: string) => ({
-      category, extension, colorMode: 'LIGHT', bytes: readFileSync(path.join(ROOT, file)).toString('base64'),
-    });
-    const brown = (bg: string) => ({ backgroundColor: bg, textColor: 'ffffffff' });
+    // The newer hosted login page needs a style; Cognito's own default for now.
+    // (A branded style with the feminin logo failed twice on deploy; see CLAUDE.md.)
     new cognito.CfnManagedLoginBranding(this, 'LoginStyle', {
       userPoolId: userPool.userPoolId,
       clientId: client.userPoolClientId,
-      useCognitoProvidedValues: false,
-      assets: [
-        asset('FORM_LOGO', 'PNG', 'infra/assets/login-logo.png'),
-        asset('FAVICON_SVG', 'SVG', 'web/icon.svg'),
-      ],
-      settings: {
-        components: {
-          form: { logo: { enabled: true, formInclusion: 'IN', location: 'CENTER', position: 'TOP' } },
-          favicon: { enabledTypes: ['SVG'] },
-          primaryButton: {
-            lightMode: { defaults: brown('7f5e4fff'), hover: brown('6a4e41ff'), active: brown('5a4237ff') },
-          },
-        },
-      },
+      useCognitoProvidedValues: true,
     });
 
     httpApi.addRoutes({
