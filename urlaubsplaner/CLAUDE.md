@@ -100,3 +100,9 @@ patient discovery page and has nothing to do with it.
   login page (CfnManagedLoginBranding with FORM_LOGO infra/assets/login-logo.png, ratio
   1:1–4:1 required) failed on deploy twice, so the login page keeps Cognito's default
   style for now. Retry only with the exact CloudFormation error in hand.
+- SSW-Rechner (28 Oct 2026): tab `#ssw` for every signed-in person. Pure browser code
+  (web/ssw-rules.js, web/ssw.js); the date is never stored or sent, so no patient data
+  reaches the API. "Possible" windows come from the practice's FEMININ_SSW-RECHNER.xlsx
+  (sheet "Mutter", E/F columns); "preferred" windows are a proposal awaiting the doctors.
+  Suggestions skip closed weekdays, Austrian holidays (copy of api/rules.js, tested to
+  match) and closures of the current year.

@@ -462,3 +462,45 @@ input[type="number"] {
 .mail-test { display: grid; gap: .5rem; border-top: 1px solid var(--line); padding-top: 1rem; }
 .mail-test h3 { font-size: 1.05rem; }
 .mail-test .button { justify-self: start; }
+
+/* ---------- SSW-Rechner ---------- */
+.ssw, .ssw-results { display: grid; gap: 1.25rem; }
+.ssw-form { display: grid; gap: 1rem; }
+.ssw-date { max-width: 18rem; }
+.ssw-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.ssw-overview { display: grid; gap: .75rem; }
+.ssw-row { display: grid; grid-template-columns: 12rem minmax(0, 1fr); align-items: center; gap: .75rem; }
+.ssw-row-name { font-size: .9375rem; }
+.ssw-track { position: relative; height: 26px; background: var(--free); border-radius: 6px; }
+.ssw-bar { position: absolute; top: 0; bottom: 0; border-radius: 6px; }
+.ssw-possible { background: var(--vacation-soft); }
+.ssw-preferred { background: var(--vacation); }
+.ssw-track .ssw-preferred { top: 5px; bottom: 5px; }
+.ssw-today { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1px; background: var(--accent); border-radius: 2px; }
+.ssw-today-swatch { background: var(--accent); width: 4px; }
+.ssw-axis { position: relative; height: 1.2rem; font-size: .75rem; color: var(--muted); }
+.ssw-axis span { position: absolute; transform: translateX(-50%); }
+
+.ssw-exam { display: grid; gap: .6rem; border-left: 5px solid var(--line); }
+.ssw-exam.is-now, .ssw-exam.is-early { border-left-color: var(--vacation); }
+.ssw-exam.is-late { border-left-color: var(--holiday-text); }
+.ssw-exam.is-missed { opacity: .7; }
+.ssw-exam-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.ssw-exam-head h2 { margin-right: auto; }
+.ssw-status { font-size: .875rem; font-weight: 600; padding: .2rem .7rem; border-radius: 999px; background: var(--surface-2); }
+.ssw-status.is-now { background: var(--vacation); color: var(--on-accent); }
+.ssw-status.is-late, .ssw-status.is-missed { background: var(--warn-bg); color: var(--holiday-text); }
+.ssw-windows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: 0; }
+.ssw-window { background: var(--surface-2); border-radius: 8px; padding: .6rem .8rem; }
+.ssw-window dt { font-size: .875rem; font-weight: 600; color: var(--muted); }
+.ssw-window dd { margin: 0; }
+.ssw-suggest { margin: 0; padding-left: 1.5rem; display: grid; gap: .3rem; }
+.ssw-suggest li { display: flex; flex-wrap: wrap; gap: .25rem .75rem; }
+
+@media (max-width: 760px) {
+  .ssw-facts { grid-template-columns: minmax(0, 1fr); }
+  .ssw-facts .stat.is-main { grid-column: auto; }
+  .ssw-row { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
+  .ssw-windows { grid-template-columns: minmax(0, 1fr); }
+}
