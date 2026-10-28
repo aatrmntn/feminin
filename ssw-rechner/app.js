@@ -132,7 +132,7 @@ function renderResults(today) {
     out.push(h('p', { class: 'hint' }, 'Wähle mindestens eine Untersuchung.'));
     return out;
   }
-  out.push(timetable(plans, age.total),
+  out.push(...examBlocks(plans, age.total),
     h('div', { class: 'actions' },
       h('button', { class: 'button', type: 'button', onclick: () => copy(plans, due, age) }, 'Als Text kopieren')));
   return out;
@@ -153,9 +153,9 @@ function dayText(iso, withYear) {
 }
 const spanText = (w) => `${dayText(w.start, w.start.slice(0, 4) !== w.end.slice(0, 4))} – ${dayText(w.end, true)}`;
 
-// One row per exam: name and status, the dates, and a bar from week 10 to 36
-// (light = possible, dark = preferred, line = today), with one shared week scale.
-function timetable(plans, todayDays) {
+// One block per exam: name and status, the dates, and a bar from week 10 to 36
+// (light = possible, dark = preferred, line = today) with its week scale.
+function examBlocks(plans, todayDays) {
   const [a, b] = AXIS.map((x) => x * 7);
   const pos = (d) => `${Math.min(100, Math.max(0, ((d - a) / (b - a)) * 100))}%`;
   const place = (el, from, to) => {
@@ -169,24 +169,27 @@ function timetable(plans, todayDays) {
     el.style.left = pos(todayDays);
     return el;
   };
-  const ticks = h('div', { class: 'ssw-axis', 'aria-hidden': 'true' });
-  for (let wk = AXIS[0]; wk <= AXIS[1]; wk += 2) {
-    const t = h('span', { class: wk % 4 ? 'minor' : null }, String(wk));
-    t.style.left = pos(wk * 7);
-    ticks.append(t);
-  }
+  const ticks = () => {
+    const axis = h('div', { class: 'ssw-axis', 'aria-hidden': 'true' });
+    for (let wk = AXIS[0]; wk <= AXIS[1]; wk += 2) {
+      const t = h('span', { class: wk % 4 ? 'minor' : null }, String(wk));
+      t.style.left = pos(wk * 7);
+      axis.append(t);
+    }
+    return axis;
+  };
   const line = (label, w, main) => h('div', { class: `ssw-line${main ? ' is-main' : ''}` },
     h('span', { class: 'ssw-line-label' }, label),
     h('span', { class: 'ssw-line-dates' }, spanText(w)),
     h('span', { class: 'ssw-line-ssw' }, `SSW ${sswText(w.from)} – ${sswText(w.to)}`));
 
-  return h('section', { class: 'card ssw-table', 'aria-label': 'Zeiträume' },
+  return [
     h('ul', { class: 'legend' },
       h('li', {}, h('span', { class: 'swatch ssw-preferred' }), 'bevorzugt'),
       h('li', {}, h('span', { class: 'swatch ssw-possible' }), 'möglich'),
       h('li', {}, h('span', { class: 'swatch ssw-today-swatch' }), 'heute'),
-      h('li', {}, 'Zahlen unten: SSW')),
-    plans.map((p) => h('article', { class: `ssw-item is-${p.status}` },
+      h('li', {}, 'Zahlen unter dem Balken: SSW')),
+    ...plans.map((p) => h('article', { class: `card ssw-item is-${p.status}` },
       h('div', { class: 'ssw-item-head' },
         h('h2', {}, p.exam.name),
         h('span', { class: `ssw-status is-${p.status}` }, statusText(p))),
@@ -195,8 +198,9 @@ function timetable(plans, todayDays) {
       h('div', { class: 'ssw-track', 'aria-hidden': 'true' },
         place(h('span', { class: 'ssw-bar ssw-possible' }), p.possible.from, p.possible.to),
         p.preferred ? place(h('span', { class: 'ssw-bar ssw-preferred' }), p.preferred.from, p.preferred.to) : null,
-        marker()))),
-    h('div', { class: 'ssw-scale' }, ticks));
+        marker()),
+      ticks())),
+  ];
 }
 
 async function copy(plans, due, age) {

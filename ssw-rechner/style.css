@@ -165,11 +165,11 @@ input[type="date"], input:not([type]), select, textarea {
 .ssw-date { max-width: 18rem; }
 .ssw-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
-.ssw-table { display: grid; gap: 0; padding-top: 1rem; }
-.ssw-table .legend { margin-bottom: .5rem; }
-.ssw-item { display: grid; gap: .35rem; padding: 1rem 0; border-top: 1px solid var(--line); }
+.ssw-item { display: grid; gap: .45rem; border-left: 5px solid var(--line); }
+.ssw-item.is-now, .ssw-item.is-early { border-left-color: var(--vacation); }
+.ssw-item.is-late { border-left-color: var(--holiday-text); }
 .ssw-item.is-missed { opacity: .55; }
-.ssw-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1rem; }
+.ssw-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1rem; margin-bottom: .25rem; }
 .ssw-item-head h2 { margin-right: auto; font-size: 1.3rem; }
 .ssw-status { font-size: .8125rem; font-weight: 600; padding: .15rem .65rem; border-radius: 999px; background: var(--surface-2); }
 .ssw-status.is-now { background: var(--vacation); color: var(--on-accent); }
@@ -190,7 +190,6 @@ input[type="date"], input:not([type]), select, textarea {
 .ssw-preferred { background: var(--vacation); }
 .ssw-today { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1px; background: var(--accent); border-radius: 2px; }
 .ssw-today-swatch { background: var(--accent); width: 4px; }
-.ssw-scale { padding-top: .5rem; border-top: 1px solid var(--line); }
 .ssw-axis { position: relative; height: 1.2rem; font-size: .75rem; color: var(--muted); }
 .ssw-axis span { position: absolute; transform: translateX(-50%); }
 
