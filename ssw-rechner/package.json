@@ -1,0 +1,10 @@
+{
+  "name": "ssw-rechner",
+  "private": true,
+  "type": "module",
+  "description": "SSW-Rechner für das Team der Ordination feminin",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "dev": "python3 -m http.server 8091"
+  }
+}
