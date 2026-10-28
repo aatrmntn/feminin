@@ -7,7 +7,7 @@ Schwangere zu finden:
 2. Untersuchungen wählen: Ersttrimesterscreening, Organscreening, 3D-Ultraschall,
    Wachstumsultraschall
 3. Möglicher und bevorzugter Zeitraum (SSW und Datum, dazu ein Überblick als Balken)
-4. Terminvorschläge: Öffnungstage ohne Feiertage und Betriebsurlaub, nie in der Vergangenheit
+4. Terminvorschläge: Montag bis Freitag ohne Feiertage, nie in der Vergangenheit
 
 Es wird nichts gespeichert und nichts verschickt. Alles läuft im Browser. Kein Build,
 keine Installation.
@@ -16,17 +16,17 @@ keine Installation.
 
 - `ssw-rules.js`, ganz oben `EXAMS`: die Zeiträume pro Untersuchung (`possible` = möglich,
   `preferred` = bevorzugt), in Tagen ab der letzten Regel, geschrieben als `w(12, 3)` = 12+3.
-- `app.js`, ganz oben `OPEN_DAYS` (Öffnungstage) und `CLOSURES` (Betriebsurlaub).
+- `app.js`, ganz oben `OPEN_DAYS`: die Öffnungstage.
 
-„Möglich“ kommt aus der Excel FEMININ_SSW-RECHNER.xlsx (Blatt „Mutter“). „Bevorzugt“ ist
-ein Vorschlag und muss ärztlich geprüft werden.
+Zeiträume festgelegt von der Praxis (28.10.2026). Nur der bevorzugte Zeitraum beim
+3D-Ultraschall ist noch ein Vorschlag und muss ärztlich geprüft werden.
 
-| Untersuchung | möglich (Excel) | bevorzugt (Vorschlag) |
+| Untersuchung | möglich | bevorzugt |
 |---|---|---|
-| Ersttrimesterscreening | 12+0 bis 13+3 | 12+2 bis 13+1 |
-| Organscreening | 21+0 bis 22+6 | 21+2 bis 22+4 |
-| 3D-Ultraschall | 26+0 bis 29+6 | 27+0 bis 28+6 |
-| Wachstumsultraschall | 30+0 bis 33+6 | 31+0 bis 32+6 |
+| Ersttrimesterscreening | 11+0 bis 13+6 | 12+0 bis 13+4 |
+| Organscreening | 18+0 bis 23+6 | 21+0 bis 22+4 |
+| 3D-Ultraschall | 26+0 bis 29+6 | 27+0 bis 28+6 (Vorschlag) |
+| Wachstumsultraschall | 30+0 bis 33+6 | 31+0 bis 32+4 |
 
 ## Ausprobieren und prüfen
 

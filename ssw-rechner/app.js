@@ -4,11 +4,8 @@ import {
   EXAMS, dueFromLmp, gestation, isIsoDate, lmpFromDue, openDayTest, planExam, sswText,
 } from './ssw-rules.js';
 
-// Opening days of the practice and days it is closed (Betriebsurlaub). No suggestions there.
+// Opening days of the practice. Suggestions only on these, never on public holidays.
 const OPEN_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri'];
-const CLOSURES = [
-  // { start: '2026-12-24', end: '2027-01-06' },
-];
 
 const MONTHS = ['Jänner', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August',
   'September', 'Oktober', 'November', 'Dezember'];
@@ -65,7 +62,7 @@ const AXIS = [10, 36]; // weeks shown on the overview bar
 const short = (iso) => iso.split('-').reverse().join('.');
 
 function sswPage() {
-  const isOpen = openDayTest(OPEN_DAYS, CLOSURES);
+  const isOpen = openDayTest(OPEN_DAYS);
   const results = h('div', { class: 'ssw-results', 'aria-live': 'polite' });
 
   const modeRadio = (value, text) => h('label', { class: 'choice' },
@@ -141,7 +138,7 @@ function renderResults(today, isOpen) {
   out.push(overview(plans, age.total), ...plans.map(examCard),
     h('div', { class: 'actions' },
       h('button', { class: 'button', type: 'button', onclick: () => copy(plans, due, age) }, 'Als Text kopieren')),
-    h('p', { class: 'hint' }, 'Vorschläge sind Öffnungstage ohne Feiertage und Betriebsurlaub. '
+    h('p', { class: 'hint' }, 'Vorschläge sind Öffnungstage (Montag bis Freitag) ohne Feiertage. '
       + 'Ob an dem Tag noch ein Termin frei ist, siehst du im Terminkalender.'));
   return out;
 }

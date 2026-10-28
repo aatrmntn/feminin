@@ -2,9 +2,8 @@
 // No DOM here, so the tests can import it (test/ssw.test.js). Nothing is stored or sent.
 //
 // Windows are in days since the first day of the last period (LMP), written as
-// "weeks + days" (12+0 = 12 completed weeks). The "possible" windows come from the
-// practice's spreadsheet FEMININ_SSW-RECHNER.xlsx (sheet "Mutter"). The "preferred"
-// windows are a first proposal and should be checked by the doctors.
+// "weeks + days" (12+0 = 12 completed weeks). Set by the practice on 28 Oct 2026;
+// 3D-Ultraschall still as in FEMININ_SSW-RECHNER.xlsx, its preferred window a proposal.
 
 const w = (weeks, days = 0) => weeks * 7 + days;
 
@@ -13,15 +12,15 @@ export const EXAMS = [
     id: 'ets',
     name: 'Ersttrimesterscreening',
     note: 'Combined Test, Nackenfaltenmessung',
-    possible: [w(12, 0), w(13, 3)],
-    preferred: [w(12, 2), w(13, 1)],
+    possible: [w(11, 0), w(13, 6)],
+    preferred: [w(12, 0), w(13, 4)],
   },
   {
     id: 'organ',
     name: 'Organscreening',
     note: 'genaue Untersuchung der kindlichen Organe',
-    possible: [w(21, 0), w(22, 6)],
-    preferred: [w(21, 2), w(22, 4)],
+    possible: [w(18, 0), w(23, 6)],
+    preferred: [w(21, 0), w(22, 4)],
   },
   {
     id: '3d',
@@ -35,7 +34,7 @@ export const EXAMS = [
     name: 'Wachstumsultraschall',
     note: 'Wachstum, Fruchtwasser, Doppler',
     possible: [w(30, 0), w(33, 6)],
-    preferred: [w(31, 0), w(32, 6)],
+    preferred: [w(31, 0), w(32, 4)],
   },
 ];
 

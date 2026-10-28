@@ -13,15 +13,15 @@ test('due date and last period are 280 days apart', () => {
   assert.equal(s.sswText(94), '13+3');
 });
 
-// Same dates as FEMININ_SSW-RECHNER.xlsx with EGT 11.10.2026.
-test('possible windows match the spreadsheet', () => {
+// EGT 11.10.2026; 3D and growth scan as in FEMININ_SSW-RECHNER.xlsx.
+test('possible windows', () => {
   const lmp = s.lmpFromDue('2026-10-11');
   const span = (id) => {
     const p = s.planExam(exam(id), lmp, '2026-01-05');
     return [p.possible.start, p.possible.end];
   };
-  assert.deepEqual(span('ets'), ['2026-03-29', '2026-04-08']);
-  assert.deepEqual(span('organ'), ['2026-05-31', '2026-06-13']);
+  assert.deepEqual(span('ets'), ['2026-03-22', '2026-04-11']); // 11+0 to 13+6
+  assert.deepEqual(span('organ'), ['2026-05-10', '2026-06-20']); // 18+0 to 23+6
   assert.deepEqual(span('3d'), ['2026-07-05', '2026-08-01']);
   assert.deepEqual(span('growth'), ['2026-08-02', '2026-08-29']);
 });
@@ -36,10 +36,11 @@ test('status follows today', () => {
   const lmp = '2026-01-04';
   const st = (today) => s.planExam(exam('ets'), lmp, today).status;
   assert.equal(st('2026-03-01'), 'upcoming');
-  assert.equal(st('2026-03-29'), 'early'); // 12+0
-  assert.equal(st('2026-03-31'), 'now'); // 12+2
-  assert.equal(st('2026-04-07'), 'late'); // 13+2
-  assert.equal(st('2026-04-09'), 'missed');
+  assert.equal(st('2026-03-22'), 'early'); // 11+0
+  assert.equal(st('2026-03-29'), 'now'); // 12+0
+  assert.equal(st('2026-04-09'), 'now'); // 13+4
+  assert.equal(st('2026-04-10'), 'late'); // 13+5
+  assert.equal(st('2026-04-12'), 'missed');
 });
 
 test('suggestions are open days in the preferred window, spread out, never in the past', () => {
@@ -51,15 +52,15 @@ test('suggestions are open days in the preferred window, spread out, never in th
     assert.ok(x.date >= p.preferred.start && x.date <= p.preferred.end);
     assert.ok(isOpen(x.date));
   }
-  assert.equal(p.suggestions[0].date, '2026-11-09'); // 21+2 is Sunday 8 Nov → Monday
+  assert.equal(p.suggestions[0].date, '2026-11-09'); // 21+0 is Saturday 7 Nov → Monday
   // Halfway through: only days from today on.
   const later = s.planExam(exam('organ'), lmp, '2026-11-16', { isOpen });
   assert.ok(later.suggestions.every((x) => x.date >= '2026-11-16'));
   // Preferred window over: the rest of the possible window.
-  const late = s.planExam(exam('organ'), lmp, '2026-11-19', { isOpen });
+  const late = s.planExam(exam('organ'), lmp, '2026-11-26', { isOpen });
   assert.equal(late.status, 'late');
-  assert.deepEqual(late.suggestions.map((x) => x.date), ['2026-11-19', '2026-11-20']);
-  assert.equal(s.planExam(exam('organ'), lmp, '2026-11-22', { isOpen }).suggestions.length, 0);
+  assert.deepEqual(late.suggestions.map((x) => x.date), ['2026-11-26', '2026-11-27']);
+  assert.equal(s.planExam(exam('organ'), lmp, '2026-11-28', { isOpen }).suggestions.length, 0);
 });
 
 test('holidays and closures are not suggested', () => {
