@@ -1,6 +1,6 @@
 // SSW-Rechner feminin: due date (or last period) in, then the windows for the chosen scans. Runs only in the browser; nothing is saved or sent.
 import {
-  EXAMS, dueFromLmp, gestation, isIsoDate, lmpFromDue, planExam, sswText,
+  EXAMS, GROUPS, dueFromLmp, gestation, isIsoDate, lmpFromDue, planExam, sswText,
 } from './ssw-rules.js';
 
 const MONTHS = ['Jänner', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August',
@@ -55,7 +55,7 @@ const STATUS_TEXT = {
 
 const statusText = (p) => (p.status === 'now' && !p.preferred ? 'Jetzt möglich' : STATUS_TEXT[p.status]);
 
-const AXIS = [10, 36]; // weeks shown on the bars
+const AXIS = [0, 40]; // weeks shown on the bars
 
 const short = (iso) => iso.split('-').reverse().join('.');
 
@@ -74,12 +74,29 @@ function sswPage() {
     oninput: () => { form.date = dateInput.value; update(); },
   });
 
-  const examChoices = h('fieldset', { class: 'choices' }, h('legend', {}, '2. Welche Untersuchungen?'),
-    EXAMS.map((e) => h('label', { class: 'choice' },
-      h('input', {
-        type: 'checkbox', value: e.id, checked: form.exams.has(e.id),
-        onchange: (ev) => { if (ev.target.checked) form.exams.add(e.id); else form.exams.delete(e.id); update(); },
-      }), e.name)));
+  // One group of checkboxes each for Eltern-Kind-Pass and ultrasound, with "Alle" and "Keine".
+  const groupChoices = (g) => {
+    const exams = EXAMS.filter((e) => e.group === g.id);
+    const boxes = exams.map((e) => h('input', {
+      type: 'checkbox', value: e.id, checked: form.exams.has(e.id),
+      onchange: (ev) => { if (ev.target.checked) form.exams.add(e.id); else form.exams.delete(e.id); update(); },
+    }));
+    const setAll = (on) => () => {
+      for (const box of boxes) {
+        box.checked = on;
+        if (on) form.exams.add(box.value); else form.exams.delete(box.value);
+      }
+      update();
+    };
+    return h('fieldset', { class: 'choices ssw-group' },
+      h('legend', {}, g.name,
+        h('button', { class: 'link', type: 'button', onclick: setAll(true) }, 'Alle'),
+        h('button', { class: 'link', type: 'button', onclick: setAll(false) }, 'Keine')),
+      exams.map((e, i) => h('label', { class: 'choice' }, boxes[i], e.name)));
+  };
+  const examChoices = h('div', { class: 'ssw-groups' },
+    h('p', { class: 'ssw-step' }, '2. Welche Untersuchungen?'),
+    GROUPS.map(groupChoices));
 
   function update() {
     results.replaceChildren(...renderResults(todayIso()));
@@ -88,7 +105,7 @@ function sswPage() {
   const section = h('section', { class: 'ssw' },
     h('div', { class: 'intro' },
       h('h1', {}, 'Den richtigen Termin finden'),
-      h('p', { class: 'hint' }, 'Für Ultraschall-Untersuchungen in der Schwangerschaft. Es wird nichts gespeichert.')),
+      h('p', { class: 'hint' }, 'Für Eltern-Kind-Pass und Ultraschall in der Schwangerschaft. Es wird nichts gespeichert.')),
     h('div', { class: 'card ssw-form' },
       h('fieldset', { class: 'choices' }, h('legend', {}, '1. Was weißt du?'),
         modeRadio('due', 'Geburtstermin'),
@@ -121,7 +138,8 @@ function renderResults(today) {
     return [h('p', { class: 'error', role: 'alert' }, 'Dieser Geburtstermin liegt mehr als 4 Wochen zurück. Bitte prüfe das Datum.')];
   }
 
-  const plans = EXAMS.filter((e) => form.exams.has(e.id)).map((e) => planExam(e, lmp, today));
+  const plans = EXAMS.filter((e) => form.exams.has(e.id)).map((e) => planExam(e, lmp, today))
+    .sort((x, y) => x.possible.from - y.possible.from);
   const out = [
     h('div', { class: 'balance ssw-facts' },
       fact('Heute', `SSW ${age.weeks}+${age.days}`, `${age.weeks + 1}. Schwangerschaftswoche`, 'is-main'),
@@ -171,8 +189,8 @@ function examBlocks(plans, todayDays) {
   };
   const ticks = () => {
     const axis = h('div', { class: 'ssw-axis', 'aria-hidden': 'true' });
-    for (let wk = AXIS[0]; wk <= AXIS[1]; wk += 2) {
-      const t = h('span', { class: wk % 4 ? 'minor' : null }, String(wk));
+    for (let wk = AXIS[0]; wk <= AXIS[1]; wk += 4) {
+      const t = h('span', { class: wk % 8 ? 'minor' : null }, String(wk));
       t.style.left = pos(wk * 7);
       axis.append(t);
     }
@@ -191,8 +209,9 @@ function examBlocks(plans, todayDays) {
       h('li', {}, 'Zahlen unter dem Balken: SSW')),
     ...plans.map((p) => h('article', { class: `card ssw-item is-${p.status}` },
       h('div', { class: 'ssw-item-head' },
-        h('h2', {}, p.exam.name),
+        h('h2', {}, h('span', { class: 'ssw-kind' }, GROUPS.find((g) => g.id === p.exam.group).name), p.exam.name),
         h('span', { class: `ssw-status is-${p.status}` }, statusText(p))),
+      p.exam.note ? h('p', { class: 'ssw-note' }, p.exam.note) : null,
       p.preferred ? line('Bevorzugt', p.preferred, true) : null,
       line('Möglich', p.possible, !p.preferred),
       h('div', { class: 'ssw-track', 'aria-hidden': 'true' },
@@ -209,6 +228,7 @@ async function copy(plans, due, age) {
     ...plans.flatMap((p) => [
       '',
       `${p.exam.name}: ${statusText(p)}`,
+      ...(p.exam.note ? [`  ${p.exam.note}`] : []),
       `  möglich SSW ${sswText(p.possible.from)}–${sswText(p.possible.to)}: ${short(p.possible.start)} – ${short(p.possible.end)}`,
       ...(p.preferred ? [`  bevorzugt SSW ${sswText(p.preferred.from)}–${sswText(p.preferred.to)}: ${short(p.preferred.start)} – ${short(p.preferred.end)}`] : []),
     ]),

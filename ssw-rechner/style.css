@@ -171,6 +171,16 @@ input[type="date"], input:not([type]), select, textarea {
 .ssw-item.is-missed { opacity: .55; }
 .ssw-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1rem; margin-bottom: .25rem; }
 .ssw-item-head h2 { margin-right: auto; font-size: 1.3rem; }
+.ssw-note { margin: 0 0 .2rem; font-size: .9375rem; color: var(--text); background: var(--surface-2); border-radius: 6px; padding: .3rem .6rem; justify-self: start; }
+.ssw-groups { display: grid; gap: 1rem; }
+.ssw-step { margin: 0; font-weight: 600; font-size: .9375rem; }
+.ssw-group legend { display: flex; align-items: baseline; gap: .5rem; font-weight: 400; color: var(--muted); }
+.link {
+  font: inherit; background: none; border: 0; padding: .25rem; color: var(--accent);
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.ssw-group legend .link { font-size: .875rem; }
+.ssw-kind { display: block; font-size: .8125rem; color: var(--muted); }
 .ssw-status { font-size: .8125rem; font-weight: 600; padding: .15rem .65rem; border-radius: 999px; background: var(--surface-2); }
 .ssw-status.is-now { background: var(--vacation); color: var(--on-accent); }
 .ssw-status.is-late, .ssw-status.is-missed { background: var(--warn-bg); color: var(--holiday-text); }

@@ -52,3 +52,25 @@ test('3D scan has only a possible window', () => {
   assert.equal(plan('2026-08-01').status, 'now'); // 29+6
   assert.equal(plan('2026-08-02').status, 'missed');
 });
+
+// Same dates as FEMININ_SSW-RECHNER.xlsx (sheet "Mutter") with EGT 11.10.2026.
+test('Eltern-Kind-Pass windows match the spreadsheet', () => {
+  const lmp = s.lmpFromDue('2026-10-11');
+  const span = (id) => {
+    const p = s.planExam(exam(id), lmp, '2026-01-05');
+    return [p.possible.start, p.possible.end];
+  };
+  assert.deepEqual(span('ekp1'), ['2026-01-04', '2026-04-25']);
+  assert.deepEqual(span('ekp2'), ['2026-04-26', '2026-05-23']);
+  assert.deepEqual(span('ekp3'), ['2026-06-21', '2026-07-18']);
+  assert.deepEqual(span('ekp4'), ['2026-07-26', '2026-08-29']);
+  assert.deepEqual(span('ekp5'), ['2026-08-30', '2026-09-26']);
+  assert.deepEqual(span('general'), ['2026-04-05', '2026-05-23']); // 13+0 to 19+6
+  assert.deepEqual(span('midwife2'), ['2026-06-14', '2026-08-29']); // 23+0 to 33+6
+});
+
+test('every exam belongs to a group and has a unique id', () => {
+  const groups = new Set(s.GROUPS.map((g) => g.id));
+  assert.ok(s.EXAMS.every((e) => groups.has(e.group)));
+  assert.equal(new Set(s.EXAMS.map((e) => e.id)).size, s.EXAMS.length);
+});

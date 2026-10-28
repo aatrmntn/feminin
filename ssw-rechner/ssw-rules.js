@@ -1,15 +1,74 @@
-// The time windows for the pregnancy scans.
+// The time windows for the examinations in pregnancy (Eltern-Kind-Pass and ultrasound).
 // No DOM here, so the tests can import it (test/ssw.test.js). Nothing is stored or sent.
 //
 // Windows are in days since the first day of the last period (LMP), written as
 // "weeks + days" (12+0 = 12 completed weeks). Set by the practice on 28 Oct 2026.
-// An exam without `preferred` has only a possible window.
+// An exam without `preferred` has only a possible window. `note` is shown with the exam.
+// group: 'ekp' = Eltern-Kind-Pass, 'us' = Ultraschall.
 
 const w = (weeks, days = 0) => weeks * 7 + days;
 
+export const GROUPS = [
+  { id: 'ekp', name: 'Eltern-Kind-Pass' },
+  { id: 'us', name: 'Ultraschall' },
+];
+
 export const EXAMS = [
   {
+    id: 'ekp1',
+    group: 'ekp',
+    name: 'EKP 1',
+    note: 'mit Laboruntersuchung und mit Influenza (= saisonale Grippe) Impfung',
+    possible: [w(0, 0), w(15, 6)],
+  },
+  {
+    id: 'ekp2',
+    group: 'ekp',
+    name: 'EKP 2',
+    possible: [w(16, 0), w(19, 6)],
+  },
+  {
+    id: 'general',
+    group: 'ekp',
+    name: 'Allgemein- & familienmedizinische Untersuchung + Gesundheitsgespräch',
+    possible: [w(13, 0), w(19, 6)],
+  },
+  {
+    id: 'midwife1',
+    group: 'ekp',
+    name: 'Hebammenberatung 1',
+    possible: [w(13, 0), w(19, 6)],
+  },
+  {
+    id: 'ekp3',
+    group: 'ekp',
+    name: 'EKP 3',
+    note: 'mit Laboruntersuchung und OGTT',
+    possible: [w(24, 0), w(27, 6)],
+  },
+  {
+    id: 'midwife2',
+    group: 'ekp',
+    name: 'Hebammenberatung 2',
+    possible: [w(23, 0), w(33, 6)],
+  },
+  {
+    id: 'ekp4',
+    group: 'ekp',
+    name: 'EKP 4',
+    note: 'mit Pertussis (= Keuchhusten) Impfung',
+    possible: [w(29, 0), w(33, 6)],
+  },
+  {
+    id: 'ekp5',
+    group: 'ekp',
+    name: 'EKP 5',
+    note: 'mit RSV (= Respiratory Syncytial Virus) Impfung',
+    possible: [w(34, 0), w(37, 6)],
+  },
+  {
     id: 'ets',
+    group: 'us',
     name: 'Ersttrimesterscreening',
     note: 'Combined Test, Nackenfaltenmessung',
     possible: [w(11, 0), w(13, 6)],
@@ -17,6 +76,7 @@ export const EXAMS = [
   },
   {
     id: 'organ',
+    group: 'us',
     name: 'Organscreening',
     note: 'genaue Untersuchung der kindlichen Organe',
     possible: [w(18, 0), w(23, 6)],
@@ -24,12 +84,14 @@ export const EXAMS = [
   },
   {
     id: '3d',
+    group: 'us',
     name: '3D-Ultraschall',
     note: '3/4D-Schwangerschaftsultraschall',
     possible: [w(26, 0), w(29, 6)],
   },
   {
     id: 'growth',
+    group: 'us',
     name: 'Wachstumsultraschall',
     note: 'Wachstum, Fruchtwasser, Doppler',
     possible: [w(30, 0), w(33, 6)],
