@@ -2,8 +2,8 @@
 // No DOM here, so the tests can import it (test/ssw.test.js). Nothing is stored or sent.
 //
 // Windows are in days since the first day of the last period (LMP), written as
-// "weeks + days" (12+0 = 12 completed weeks). Set by the practice on 28 Oct 2026;
-// 3D-Ultraschall still as in FEMININ_SSW-RECHNER.xlsx, its preferred window a proposal.
+// "weeks + days" (12+0 = 12 completed weeks). Set by the practice on 28 Oct 2026.
+// An exam without `preferred` has only a possible window.
 
 const w = (weeks, days = 0) => weeks * 7 + days;
 
@@ -27,7 +27,6 @@ export const EXAMS = [
     name: '3D-Ultraschall',
     note: '3/4D-Schwangerschaftsultraschall',
     possible: [w(26, 0), w(29, 6)],
-    preferred: [w(27, 0), w(28, 6)],
   },
   {
     id: 'growth',
@@ -126,23 +125,25 @@ export function openDayTest(openDays = ['mon', 'tue', 'wed', 'thu', 'fri'], clos
 // ---------- plan for one exam ----------
 
 // status: 'upcoming' (not started), 'early' (possible, preferred not yet), 'now' (in the
-// preferred window), 'late' (preferred over, still possible), 'missed' (window over).
+// preferred window, or the possible one if there is no preferred), 'late' (preferred over,
+// still possible), 'missed' (window over). preferred is null if the exam has none.
 // suggestions: up to `count` open days, spread over the window that is still ahead.
 export function planExam(exam, lmp, today, { isOpen = () => true, count = 4 } = {}) {
   const span = ([a, b]) => ({ start: addDays(lmp, a), end: addDays(lmp, b), from: a, to: b });
   const possible = span(exam.possible);
-  const preferred = span(exam.preferred);
+  const preferred = exam.preferred ? span(exam.preferred) : null;
+  const target = preferred || possible;
 
   let status;
   if (today > possible.end) status = 'missed';
-  else if (today > preferred.end) status = 'late';
-  else if (today >= preferred.start) status = 'now';
+  else if (today > target.end) status = 'late';
+  else if (today >= target.start) status = 'now';
   else if (today >= possible.start) status = 'early';
   else status = 'upcoming';
 
   let days = [];
   if (status !== 'missed') {
-    days = openDays(status === 'late' ? possible : preferred, today, isOpen);
+    days = openDays(status === 'late' ? possible : target, today, isOpen);
     // Only closed days left in the preferred window: offer the rest of the possible one.
     if (!days.length) days = openDays(possible, today, isOpen);
   }

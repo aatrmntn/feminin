@@ -57,6 +57,8 @@ const STATUS_TEXT = {
   missed: 'Zeitraum vorbei',
 };
 
+const statusText = (p) => (p.status === 'now' && !p.preferred ? 'Jetzt möglich' : STATUS_TEXT[p.status]);
+
 const AXIS = [10, 36]; // weeks shown on the overview bar
 
 const short = (iso) => iso.split('-').reverse().join('.');
@@ -179,9 +181,9 @@ function overview(plans, todayDays) {
       h('li', {}, h('span', { class: 'swatch ssw-today-swatch' }), 'heute')),
     plans.map((p) => h('div', { class: 'ssw-row' },
       h('span', { class: 'ssw-row-name' }, p.exam.name),
-      h('div', { class: 'ssw-track', role: 'img', 'aria-label': `${p.exam.name}: möglich SSW ${sswText(p.possible.from)} bis ${sswText(p.possible.to)}, bevorzugt ${sswText(p.preferred.from)} bis ${sswText(p.preferred.to)}` },
+      h('div', { class: 'ssw-track', role: 'img', 'aria-label': `${p.exam.name}: möglich SSW ${sswText(p.possible.from)} bis ${sswText(p.possible.to)}${p.preferred ? `, bevorzugt ${sswText(p.preferred.from)} bis ${sswText(p.preferred.to)}` : ''}` },
         place(h('span', { class: 'ssw-bar ssw-possible' }), p.possible.from, p.possible.to),
-        place(h('span', { class: 'ssw-bar ssw-preferred' }), p.preferred.from, p.preferred.to),
+        p.preferred ? place(h('span', { class: 'ssw-bar ssw-preferred' }), p.preferred.from, p.preferred.to) : null,
         marker()))),
     h('div', { class: 'ssw-row' }, h('span', { class: 'ssw-row-name hint' }, 'SSW'), ticks));
 }
@@ -203,11 +205,11 @@ function examCard(p) {
   return h('article', { class: `card ssw-exam is-${p.status}` },
     h('div', { class: 'ssw-exam-head' },
       h('h2', {}, p.exam.name),
-      h('span', { class: `ssw-status is-${p.status}` }, STATUS_TEXT[p.status])),
+      h('span', { class: `ssw-status is-${p.status}` }, statusText(p))),
     h('p', { class: 'hint' }, p.exam.note),
     h('dl', { class: 'ssw-windows' },
       windowLine('Möglich', p.possible),
-      windowLine('Bevorzugt', p.preferred)),
+      p.preferred ? windowLine('Bevorzugt', p.preferred) : null),
     h('h3', {}, p.status === 'late' ? 'Terminvorschläge (nur noch im möglichen Zeitraum)' : 'Terminvorschläge'),
     list);
 }
@@ -217,9 +219,9 @@ async function copy(plans, due, age) {
     `Geburtstermin: ${longDate(due)} (heute SSW ${age.weeks}+${age.days})`,
     ...plans.flatMap((p) => [
       '',
-      `${p.exam.name}: ${STATUS_TEXT[p.status]}`,
+      `${p.exam.name}: ${statusText(p)}`,
       `  möglich SSW ${sswText(p.possible.from)}–${sswText(p.possible.to)}: ${short(p.possible.start)} – ${short(p.possible.end)}`,
-      `  bevorzugt SSW ${sswText(p.preferred.from)}–${sswText(p.preferred.to)}: ${short(p.preferred.start)} – ${short(p.preferred.end)}`,
+      ...(p.preferred ? [`  bevorzugt SSW ${sswText(p.preferred.from)}–${sswText(p.preferred.to)}: ${short(p.preferred.start)} – ${short(p.preferred.end)}`] : []),
       ...(p.suggestions.length ? [`  Vorschläge: ${p.suggestions.map((s) => short(s.date)).join(', ')}`] : []),
     ]),
   ];

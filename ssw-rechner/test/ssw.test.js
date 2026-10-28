@@ -27,7 +27,7 @@ test('possible windows', () => {
 });
 
 test('preferred windows lie inside the possible ones', () => {
-  for (const e of s.EXAMS) {
+  for (const e of s.EXAMS.filter((x) => x.preferred)) {
     assert.ok(e.possible[0] <= e.preferred[0] && e.preferred[1] <= e.possible[1], e.id);
   }
 });
@@ -78,4 +78,16 @@ test('Austrian holidays with Easter', () => {
   assert.ok(dates(2026).includes('2026-06-04')); // Fronleichnam
   assert.ok(dates(2027).includes('2027-03-29')); // Ostermontag
   assert.ok(dates(2027).includes('2027-05-06')); // Christi Himmelfahrt
+});
+
+test('3D scan has only a possible window', () => {
+  const isOpen = s.openDayTest();
+  const lmp = '2026-01-04';
+  const plan = (today) => s.planExam(exam('3d'), lmp, today, { isOpen });
+  assert.equal(plan('2026-07-01').preferred, null);
+  assert.equal(plan('2026-07-01').status, 'upcoming');
+  assert.equal(plan('2026-07-05').status, 'now'); // 26+0
+  assert.equal(plan('2026-08-02').status, 'missed');
+  assert.equal(plan('2026-07-01').suggestions[0].date, '2026-07-06'); // first open day from 26+0
+  assert.equal(plan('2026-07-01').suggestions.at(-1).date, '2026-07-31');
 });

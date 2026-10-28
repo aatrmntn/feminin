@@ -1,0 +1,43 @@
+# Publishes ssw-rechner/ on GitHub Pages at https://aatrmntn.github.io/feminin/ssw-rechner/
+# after every change on main. The tests run first; if they fail, nothing is published.
+name: SSW-Rechner veröffentlichen
+
+on:
+  push:
+    branches: [main]
+    paths: ['ssw-rechner/**', '.github/workflows/ssw-rechner.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}ssw-rechner/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tests
+        run: cd ssw-rechner && npm test
+      - name: Seite zusammenstellen
+        run: |
+          mkdir -p _site/ssw-rechner
+          cp ssw-rechner/index.html ssw-rechner/app.js ssw-rechner/ssw-rules.js ssw-rechner/style.css \
+             ssw-rechner/icon.svg ssw-rechner/wordmark.png _site/ssw-rechner/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -12,20 +12,34 @@ Schwangere zu finden:
 Es wird nichts gespeichert und nichts verschickt. Alles läuft im Browser. Kein Build,
 keine Installation.
 
+## Adresse
+
+<https://aatrmntn.github.io/feminin/ssw-rechner/>
+
+Ohne Anmeldung. Die Seite ist nirgends verlinkt und für Suchmaschinen gesperrt
+(`noindex`). Weil das Repository öffentlich ist, ist der Link aber nicht wirklich geheim.
+Das ist in Ordnung, weil der Rechner keine Daten speichert.
+
+Jede Änderung auf `main` im Ordner `ssw-rechner/` wird automatisch veröffentlicht
+(`.github/workflows/ssw-rechner.yml`), aber nur, wenn alle Tests durchlaufen.
+
+Einmalig nötig: Auf GitHub im Repository **Settings → Pages → Build and deployment →
+Source: „GitHub Actions“** wählen.
+
 ## Wo was steht
 
 - `ssw-rules.js`, ganz oben `EXAMS`: die Zeiträume pro Untersuchung (`possible` = möglich,
   `preferred` = bevorzugt), in Tagen ab der letzten Regel, geschrieben als `w(12, 3)` = 12+3.
 - `app.js`, ganz oben `OPEN_DAYS`: die Öffnungstage.
 
-Zeiträume festgelegt von der Praxis (28.10.2026). Nur der bevorzugte Zeitraum beim
-3D-Ultraschall ist noch ein Vorschlag und muss ärztlich geprüft werden.
+Zeiträume festgelegt von der Praxis (28.10.2026). Der 3D-Ultraschall hat nur einen
+möglichen Zeitraum, keinen bevorzugten.
 
 | Untersuchung | möglich | bevorzugt |
 |---|---|---|
 | Ersttrimesterscreening | 11+0 bis 13+6 | 12+0 bis 13+4 |
 | Organscreening | 18+0 bis 23+6 | 21+0 bis 22+4 |
-| 3D-Ultraschall | 26+0 bis 29+6 | 27+0 bis 28+6 (Vorschlag) |
+| 3D-Ultraschall | 26+0 bis 29+6 | – |
 | Wachstumsultraschall | 30+0 bis 33+6 | 31+0 bis 32+4 |
 
 ## Ausprobieren und prüfen
