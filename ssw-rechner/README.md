@@ -6,8 +6,7 @@ Schwangere zu finden:
 1. Geburtstermin oder ersten Tag der letzten Regel eingeben
 2. Untersuchungen wählen: Ersttrimesterscreening, Organscreening, 3D-Ultraschall,
    Wachstumsultraschall
-3. Möglicher und bevorzugter Zeitraum (SSW und Datum, dazu ein Überblick als Balken)
-4. Terminvorschläge: Montag bis Freitag ohne Feiertage, nie in der Vergangenheit
+3. Möglicher und bevorzugter Zeitraum auf einen Blick: Datum, SSW und ein Balken mit „heute“
 
 Es wird nichts gespeichert und nichts verschickt. Alles läuft im Browser. Kein Build,
 keine Installation.
@@ -30,7 +29,6 @@ Source: „GitHub Actions“** wählen.
 
 - `ssw-rules.js`, ganz oben `EXAMS`: die Zeiträume pro Untersuchung (`possible` = möglich,
   `preferred` = bevorzugt), in Tagen ab der letzten Regel, geschrieben als `w(12, 3)` = 12+3.
-- `app.js`, ganz oben `OPEN_DAYS`: die Öffnungstage.
 
 Zeiträume festgelegt von der Praxis (28.10.2026). Der 3D-Ultraschall hat nur einen
 möglichen Zeitraum, keinen bevorzugten.
@@ -47,5 +45,5 @@ möglichen Zeitraum, keinen bevorzugten.
 ```bash
 cd ssw-rechner
 npm run dev    # dann http://localhost:8091 öffnen
-npm test       # prüft die Zeiträume gegen die Excel, Feiertage, Vorschläge
+npm test       # prüft die Zeiträume und den Status
 ```

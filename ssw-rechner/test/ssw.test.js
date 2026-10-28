@@ -1,4 +1,4 @@
-// SSW-Rechner (ssw-rules.js): windows from the practice's spreadsheet, suggestions.
+// SSW-Rechner (ssw-rules.js): windows and status.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as s from '../ssw-rules.js';
@@ -43,51 +43,12 @@ test('status follows today', () => {
   assert.equal(st('2026-04-12'), 'missed');
 });
 
-test('suggestions are open days in the preferred window, spread out, never in the past', () => {
-  const isOpen = s.openDayTest(['mon', 'tue', 'wed', 'thu', 'fri']);
-  const lmp = s.lmpFromDue('2027-03-20'); // 2026-06-13
-  const p = s.planExam(exam('organ'), lmp, '2026-07-01', { isOpen });
-  assert.equal(p.suggestions.length, 4);
-  for (const x of p.suggestions) {
-    assert.ok(x.date >= p.preferred.start && x.date <= p.preferred.end);
-    assert.ok(isOpen(x.date));
-  }
-  assert.equal(p.suggestions[0].date, '2026-11-09'); // 21+0 is Saturday 7 Nov → Monday
-  // Halfway through: only days from today on.
-  const later = s.planExam(exam('organ'), lmp, '2026-11-16', { isOpen });
-  assert.ok(later.suggestions.every((x) => x.date >= '2026-11-16'));
-  // Preferred window over: the rest of the possible window.
-  const late = s.planExam(exam('organ'), lmp, '2026-11-26', { isOpen });
-  assert.equal(late.status, 'late');
-  assert.deepEqual(late.suggestions.map((x) => x.date), ['2026-11-26', '2026-11-27']);
-  assert.equal(s.planExam(exam('organ'), lmp, '2026-11-28', { isOpen }).suggestions.length, 0);
-});
-
-test('holidays and closures are not suggested', () => {
-  const isOpen = s.openDayTest(['mon', 'tue', 'wed', 'thu', 'fri'], [{ start: '2026-12-24', end: '2027-01-06' }]);
-  assert.equal(isOpen('2026-12-08'), false); // Mariä Empfängnis
-  assert.equal(isOpen('2026-12-28'), false); // Betriebsurlaub
-  assert.equal(isOpen('2026-12-12'), false); // Saturday
-  assert.equal(isOpen('2026-12-09'), true);
-});
-
-test('Austrian holidays with Easter', () => {
-  const dates = (y) => s.publicHolidays(y).map((x) => x.date);
-  assert.equal(dates(2026).length, 13);
-  assert.ok(dates(2026).includes('2026-04-06')); // Ostermontag
-  assert.ok(dates(2026).includes('2026-06-04')); // Fronleichnam
-  assert.ok(dates(2027).includes('2027-03-29')); // Ostermontag
-  assert.ok(dates(2027).includes('2027-05-06')); // Christi Himmelfahrt
-});
-
 test('3D scan has only a possible window', () => {
-  const isOpen = s.openDayTest();
   const lmp = '2026-01-04';
-  const plan = (today) => s.planExam(exam('3d'), lmp, today, { isOpen });
+  const plan = (today) => s.planExam(exam('3d'), lmp, today);
   assert.equal(plan('2026-07-01').preferred, null);
   assert.equal(plan('2026-07-01').status, 'upcoming');
   assert.equal(plan('2026-07-05').status, 'now'); // 26+0
+  assert.equal(plan('2026-08-01').status, 'now'); // 29+6
   assert.equal(plan('2026-08-02').status, 'missed');
-  assert.equal(plan('2026-07-01').suggestions[0].date, '2026-07-06'); // first open day from 26+0
-  assert.equal(plan('2026-07-01').suggestions.at(-1).date, '2026-07-31');
 });

@@ -165,39 +165,42 @@ input[type="date"], input:not([type]), select, textarea {
 .ssw-date { max-width: 18rem; }
 .ssw-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
-.ssw-overview { display: grid; gap: .75rem; }
-.ssw-row { display: grid; grid-template-columns: 12rem minmax(0, 1fr); align-items: center; gap: .75rem; }
-.ssw-row-name { font-size: .9375rem; }
-.ssw-track { position: relative; height: 26px; background: var(--free); border-radius: 6px; }
-.ssw-bar { position: absolute; top: 0; bottom: 0; border-radius: 6px; }
-.ssw-possible { background: var(--vacation-soft); }
-.ssw-preferred { background: var(--vacation); }
-.ssw-track .ssw-preferred { top: 5px; bottom: 5px; }
-.ssw-today { position: absolute; top: -4px; bottom: -4px; width: 3px; margin-left: -1px; background: var(--accent); border-radius: 2px; }
-.ssw-today-swatch { background: var(--accent); width: 4px; }
-.ssw-axis { position: relative; height: 1.2rem; font-size: .75rem; color: var(--muted); }
-.ssw-axis span { position: absolute; transform: translateX(-50%); }
-
-.ssw-exam { display: grid; gap: .6rem; border-left: 5px solid var(--line); }
-.ssw-exam.is-now, .ssw-exam.is-early { border-left-color: var(--vacation); }
-.ssw-exam.is-late { border-left-color: var(--holiday-text); }
-.ssw-exam.is-missed { opacity: .7; }
-.ssw-exam-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
-.ssw-exam-head h2 { margin-right: auto; }
-.ssw-status { font-size: .875rem; font-weight: 600; padding: .2rem .7rem; border-radius: 999px; background: var(--surface-2); }
+.ssw-table { display: grid; gap: 0; padding-top: 1rem; }
+.ssw-table .legend { margin-bottom: .5rem; }
+.ssw-item { display: grid; gap: .35rem; padding: 1rem 0; border-top: 1px solid var(--line); }
+.ssw-item.is-missed { opacity: .55; }
+.ssw-item-head { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1rem; }
+.ssw-item-head h2 { margin-right: auto; font-size: 1.3rem; }
+.ssw-status { font-size: .8125rem; font-weight: 600; padding: .15rem .65rem; border-radius: 999px; background: var(--surface-2); }
 .ssw-status.is-now { background: var(--vacation); color: var(--on-accent); }
 .ssw-status.is-late, .ssw-status.is-missed { background: var(--warn-bg); color: var(--holiday-text); }
-.ssw-windows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: 0; }
-.ssw-window { background: var(--surface-2); border-radius: 8px; padding: .6rem .8rem; }
-.ssw-window dt { font-size: .875rem; font-weight: 600; color: var(--muted); }
-.ssw-window dd { margin: 0; }
-.ssw-suggest { margin: 0; padding-left: 1.5rem; display: grid; gap: .3rem; }
-.ssw-suggest li { display: flex; flex-wrap: wrap; gap: .25rem .75rem; }
+
+/* Date lines: label | dates | weeks, aligned in columns. */
+.ssw-line { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; gap: .75rem; align-items: baseline; color: var(--muted); }
+.ssw-line-label { font-size: .875rem; font-weight: 600; }
+.ssw-line-ssw { font-size: .875rem; font-variant-numeric: tabular-nums; }
+.ssw-line-dates { font-variant-numeric: tabular-nums; }
+.ssw-line.is-main { color: var(--text); }
+.ssw-line.is-main .ssw-line-dates { font-size: 1.15rem; font-weight: 600; color: var(--accent); }
+.ssw-line.is-main .ssw-line-label { color: var(--accent); }
+
+.ssw-track { position: relative; height: 14px; margin-top: .35rem; background: var(--free); border-radius: 7px; }
+.ssw-bar { position: absolute; top: 0; bottom: 0; border-radius: 7px; }
+.ssw-possible { background: var(--vacation-soft); }
+.ssw-preferred { background: var(--vacation); }
+.ssw-today { position: absolute; top: -5px; bottom: -5px; width: 3px; margin-left: -1px; background: var(--accent); border-radius: 2px; }
+.ssw-today-swatch { background: var(--accent); width: 4px; }
+.ssw-scale { padding-top: .5rem; border-top: 1px solid var(--line); }
+.ssw-axis { position: relative; height: 1.2rem; font-size: .75rem; color: var(--muted); }
+.ssw-axis span { position: absolute; transform: translateX(-50%); }
 
 @media (max-width: 760px) {
   .ssw-facts { grid-template-columns: minmax(0, 1fr); }
   .ssw-facts .stat.is-main { grid-column: auto; }
-  .ssw-row { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
-  .ssw-windows { grid-template-columns: minmax(0, 1fr); }
+  .ssw-line { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .ssw-line-dates { white-space: nowrap; }
+  .ssw-line.is-main .ssw-line-dates { font-size: 1.05rem; }
+  .ssw-axis .minor { display: none; }
 }
+
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }

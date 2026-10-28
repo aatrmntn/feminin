@@ -1,11 +1,7 @@
-// SSW-Rechner feminin: due date (or last period) in, then the windows for the chosen scans
-// and suggested appointment days. Runs only in the browser; nothing is saved or sent.
+// SSW-Rechner feminin: due date (or last period) in, then the windows for the chosen scans. Runs only in the browser; nothing is saved or sent.
 import {
-  EXAMS, dueFromLmp, gestation, isIsoDate, lmpFromDue, openDayTest, planExam, sswText,
+  EXAMS, dueFromLmp, gestation, isIsoDate, lmpFromDue, planExam, sswText,
 } from './ssw-rules.js';
-
-// Opening days of the practice. Suggestions only on these, never on public holidays.
-const OPEN_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri'];
 
 const MONTHS = ['Jänner', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August',
   'September', 'Oktober', 'November', 'Dezember'];
@@ -59,12 +55,11 @@ const STATUS_TEXT = {
 
 const statusText = (p) => (p.status === 'now' && !p.preferred ? 'Jetzt möglich' : STATUS_TEXT[p.status]);
 
-const AXIS = [10, 36]; // weeks shown on the overview bar
+const AXIS = [10, 36]; // weeks shown on the bars
 
 const short = (iso) => iso.split('-').reverse().join('.');
 
 function sswPage() {
-  const isOpen = openDayTest(OPEN_DAYS);
   const results = h('div', { class: 'ssw-results', 'aria-live': 'polite' });
 
   const modeRadio = (value, text) => h('label', { class: 'choice' },
@@ -87,7 +82,7 @@ function sswPage() {
       }), e.name)));
 
   function update() {
-    results.replaceChildren(...renderResults(todayIso(), isOpen));
+    results.replaceChildren(...renderResults(todayIso()));
   }
 
   const section = h('section', { class: 'ssw' },
@@ -110,7 +105,7 @@ function sswPage() {
   return section;
 }
 
-function renderResults(today, isOpen) {
+function renderResults(today) {
   if (!form.date) return [h('p', { class: 'hint' }, 'Gib zuerst ein Datum ein.')];
   if (!isIsoDate(form.date)) return [h('p', { class: 'error', role: 'alert' }, 'Bitte gib ein gültiges Datum ein.')];
 
@@ -126,7 +121,7 @@ function renderResults(today, isOpen) {
     return [h('p', { class: 'error', role: 'alert' }, 'Dieser Geburtstermin liegt mehr als 4 Wochen zurück. Bitte prüfe das Datum.')];
   }
 
-  const plans = EXAMS.filter((e) => form.exams.has(e.id)).map((e) => planExam(e, lmp, today, { isOpen }));
+  const plans = EXAMS.filter((e) => form.exams.has(e.id)).map((e) => planExam(e, lmp, today));
   const out = [
     h('div', { class: 'balance ssw-facts' },
       fact('Heute', `SSW ${age.weeks}+${age.days}`, `${age.weeks + 1}. Schwangerschaftswoche`, 'is-main'),
@@ -137,11 +132,9 @@ function renderResults(today, isOpen) {
     out.push(h('p', { class: 'hint' }, 'Wähle mindestens eine Untersuchung.'));
     return out;
   }
-  out.push(overview(plans, age.total), ...plans.map(examCard),
+  out.push(timetable(plans, age.total),
     h('div', { class: 'actions' },
-      h('button', { class: 'button', type: 'button', onclick: () => copy(plans, due, age) }, 'Als Text kopieren')),
-    h('p', { class: 'hint' }, 'Vorschläge sind Öffnungstage (Montag bis Freitag) ohne Feiertage. '
-      + 'Ob an dem Tag noch ein Termin frei ist, siehst du im Terminkalender.'));
+      h('button', { class: 'button', type: 'button', onclick: () => copy(plans, due, age) }, 'Als Text kopieren')));
   return out;
 }
 
@@ -152,8 +145,17 @@ function fact(label, value, sub, cls = '') {
     h('span', { class: 'stat-sub' }, sub));
 }
 
-// Bars from week 10 to 36: light = possible, dark = preferred, line = today.
-function overview(plans, todayDays) {
+// "Mo 26.10. – Fr 6.11.2026": short enough to read at a glance.
+const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+function dayText(iso, withYear) {
+  const d = dateOf(iso);
+  return `${WD[d.getUTCDay()]} ${d.getUTCDate()}.${d.getUTCMonth() + 1}.${withYear ? d.getUTCFullYear() : ''}`;
+}
+const spanText = (w) => `${dayText(w.start, w.start.slice(0, 4) !== w.end.slice(0, 4))} – ${dayText(w.end, true)}`;
+
+// One row per exam: name and status, the dates, and a bar from week 10 to 36
+// (light = possible, dark = preferred, line = today), with one shared week scale.
+function timetable(plans, todayDays) {
   const [a, b] = AXIS.map((x) => x * 7);
   const pos = (d) => `${Math.min(100, Math.max(0, ((d - a) / (b - a)) * 100))}%`;
   const place = (el, from, to) => {
@@ -169,49 +171,32 @@ function overview(plans, todayDays) {
   };
   const ticks = h('div', { class: 'ssw-axis', 'aria-hidden': 'true' });
   for (let wk = AXIS[0]; wk <= AXIS[1]; wk += 2) {
-    const t = h('span', {}, String(wk));
+    const t = h('span', { class: wk % 4 ? 'minor' : null }, String(wk));
     t.style.left = pos(wk * 7);
     ticks.append(t);
   }
-  return h('div', { class: 'card ssw-overview' },
-    h('h2', {}, 'Überblick'),
+  const line = (label, w, main) => h('div', { class: `ssw-line${main ? ' is-main' : ''}` },
+    h('span', { class: 'ssw-line-label' }, label),
+    h('span', { class: 'ssw-line-dates' }, spanText(w)),
+    h('span', { class: 'ssw-line-ssw' }, `SSW ${sswText(w.from)} – ${sswText(w.to)}`));
+
+  return h('section', { class: 'card ssw-table', 'aria-label': 'Zeiträume' },
     h('ul', { class: 'legend' },
-      h('li', {}, h('span', { class: 'swatch ssw-possible' }), 'möglich'),
       h('li', {}, h('span', { class: 'swatch ssw-preferred' }), 'bevorzugt'),
-      h('li', {}, h('span', { class: 'swatch ssw-today-swatch' }), 'heute')),
-    plans.map((p) => h('div', { class: 'ssw-row' },
-      h('span', { class: 'ssw-row-name' }, p.exam.name),
-      h('div', { class: 'ssw-track', role: 'img', 'aria-label': `${p.exam.name}: möglich SSW ${sswText(p.possible.from)} bis ${sswText(p.possible.to)}${p.preferred ? `, bevorzugt ${sswText(p.preferred.from)} bis ${sswText(p.preferred.to)}` : ''}` },
+      h('li', {}, h('span', { class: 'swatch ssw-possible' }), 'möglich'),
+      h('li', {}, h('span', { class: 'swatch ssw-today-swatch' }), 'heute'),
+      h('li', {}, 'Zahlen unten: SSW')),
+    plans.map((p) => h('article', { class: `ssw-item is-${p.status}` },
+      h('div', { class: 'ssw-item-head' },
+        h('h2', {}, p.exam.name),
+        h('span', { class: `ssw-status is-${p.status}` }, statusText(p))),
+      p.preferred ? line('Bevorzugt', p.preferred, true) : null,
+      line('Möglich', p.possible, !p.preferred),
+      h('div', { class: 'ssw-track', 'aria-hidden': 'true' },
         place(h('span', { class: 'ssw-bar ssw-possible' }), p.possible.from, p.possible.to),
         p.preferred ? place(h('span', { class: 'ssw-bar ssw-preferred' }), p.preferred.from, p.preferred.to) : null,
         marker()))),
-    h('div', { class: 'ssw-row' }, h('span', { class: 'ssw-row-name hint' }, 'SSW'), ticks));
-}
-
-function windowLine(label, w) {
-  return h('div', { class: 'ssw-window' },
-    h('dt', {}, label),
-    h('dd', {}, h('strong', {}, `SSW ${sswText(w.from)} bis ${sswText(w.to)}`), h('br'),
-      `${weekdayDate(w.start)} – ${weekdayDate(w.end)}`));
-}
-
-function examCard(p) {
-  const list = p.suggestions.length
-    ? h('ol', { class: 'ssw-suggest' }, p.suggestions.map((s) => h('li', {},
-      h('span', {}, weekdayDate(s.date)), h('span', { class: 'hint' }, `SSW ${s.ssw}`))))
-    : h('p', { class: 'hint' }, p.status === 'missed'
-      ? 'Für diese Untersuchung ist es zu spät.'
-      : 'Im Zeitraum ist kein Öffnungstag mehr frei.');
-  return h('article', { class: `card ssw-exam is-${p.status}` },
-    h('div', { class: 'ssw-exam-head' },
-      h('h2', {}, p.exam.name),
-      h('span', { class: `ssw-status is-${p.status}` }, statusText(p))),
-    h('p', { class: 'hint' }, p.exam.note),
-    h('dl', { class: 'ssw-windows' },
-      windowLine('Möglich', p.possible),
-      p.preferred ? windowLine('Bevorzugt', p.preferred) : null),
-    h('h3', {}, p.status === 'late' ? 'Terminvorschläge (nur noch im möglichen Zeitraum)' : 'Terminvorschläge'),
-    list);
+    h('div', { class: 'ssw-scale' }, ticks));
 }
 
 async function copy(plans, due, age) {
@@ -222,7 +207,6 @@ async function copy(plans, due, age) {
       `${p.exam.name}: ${statusText(p)}`,
       `  möglich SSW ${sswText(p.possible.from)}–${sswText(p.possible.to)}: ${short(p.possible.start)} – ${short(p.possible.end)}`,
       ...(p.preferred ? [`  bevorzugt SSW ${sswText(p.preferred.from)}–${sswText(p.preferred.to)}: ${short(p.preferred.start)} – ${short(p.preferred.end)}`] : []),
-      ...(p.suggestions.length ? [`  Vorschläge: ${p.suggestions.map((s) => short(s.date)).join(', ')}`] : []),
     ]),
   ];
   try {
