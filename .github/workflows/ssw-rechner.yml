@@ -35,6 +35,12 @@ jobs:
           mkdir -p _site/ssw-rechner
           cp ssw-rechner/index.html ssw-rechner/app.js ssw-rechner/ssw-rules.js ssw-rechner/style.css \
              ssw-rechner/icon.svg ssw-rechner/wordmark.png _site/ssw-rechner/
+          # A version number on every file, so browsers fetch the new version at once.
+          v=${GITHUB_SHA::8}
+          cd _site/ssw-rechner
+          sed -i "s#href=\"style.css\"#href=\"style.css?v=$v\"#; s#src=\"app.js\"#src=\"app.js?v=$v\"#" index.html
+          sed -i "s#'./ssw-rules.js'#'./ssw-rules.js?v=$v'#" app.js
+          grep -q "app.js?v=$v" index.html && grep -q "ssw-rules.js?v=$v" app.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
