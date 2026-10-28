@@ -49,28 +49,6 @@ Der ganze Plan steht in `PLAN.md`, die Antworten auf die offenen Fragen in `CLAU
 - **Aufräumen:** Jedes Jahr am 2. Jänner werden Einträge gelöscht, die älter als das
   laufende Jahr plus zwei Jahre sind (Datenschutz).
 
-## Neu: SSW-Rechner
-
-Im Planer gibt es den Bereich **SSW-Rechner** (für alle, die angemeldet sind). Er hilft,
-den richtigen Termin für eine Patientin zu finden:
-
-1. Geburtstermin oder ersten Tag der letzten Regel eingeben
-2. Untersuchungen wählen: Ersttrimesterscreening, Organscreening, 3D-Ultraschall,
-   Wachstumsultraschall
-3. Möglicher und bevorzugter Zeitraum (mit SSW und Datum, dazu ein Überblick als Balken)
-4. Terminvorschläge: Öffnungstage ohne Feiertage und Betriebsurlaub, nie in der Vergangenheit
-
-Es wird nichts gespeichert und nichts an den Server geschickt. Die Zeiträume stehen ganz
-oben in `web/ssw-rules.js` (`EXAMS`). „Möglich“ kommt aus der Excel
-FEMININ_SSW-RECHNER.xlsx, „bevorzugt“ ist ein Vorschlag und muss ärztlich geprüft werden.
-
-| Untersuchung | möglich (Excel) | bevorzugt (Vorschlag) |
-|---|---|---|
-| Ersttrimesterscreening | 12+0 bis 13+3 | 12+2 bis 13+1 |
-| Organscreening | 21+0 bis 22+6 | 21+2 bis 22+4 |
-| 3D-Ultraschall | 26+0 bis 29+6 | 27+0 bis 28+6 |
-| Wachstumsultraschall | 30+0 bis 33+6 | 31+0 bis 32+6 |
-
 ## Selbst ausprobieren, ohne AWS
 
 ```bash

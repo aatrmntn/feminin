@@ -8,7 +8,6 @@ import {
 } from './ui.js';
 import { requestsPage } from './requests.js';
 import { settingsPage } from './settings.js';
-import { sswPage } from './ssw.js';
 import { teamPage } from './team.js';
 
 const main = document.getElementById('main');
@@ -81,7 +80,7 @@ async function load(year = state.year) {
 
 function currentPage() {
   const page = location.hash.slice(1);
-  if (page === 'team' || page === 'ssw') return page;
+  if (page === 'team') return page;
   if ((page === 'antraege' || page === 'einstellungen') && state.data.me.canApprove) return page;
   return 'me';
 }
@@ -92,7 +91,6 @@ function renderNav(page) {
   return h('nav', { class: 'tabs', 'aria-label': 'Bereiche' },
     link('#', 'me', 'Mein Kalender'),
     link('#team', 'team', 'Team'),
-    link('#ssw', 'ssw', 'SSW-Rechner'),
     d.me.canApprove ? link('#antraege', 'antraege', 'Anträge',
       d.openRequests ? h('span', { class: 'count', 'aria-label': `${d.openRequests} offen` }, String(d.openRequests)) : null) : null,
     d.me.canApprove ? link('#einstellungen', 'einstellungen', 'Einstellungen') : null);
@@ -109,10 +107,6 @@ function render() {
     main.replaceChildren(renderNav(page), teamPage({
       today: d.today, myId: d.me.userId, canApprove: d.me.canApprove, onPick: pickFromTeam,
     }));
-    return;
-  }
-  if (page === 'ssw') {
-    main.replaceChildren(renderNav(page), sswPage({ today: d.today, openDays: d.practice.openDays, closures: d.closures }));
     return;
   }
   if (page === 'antraege') {
