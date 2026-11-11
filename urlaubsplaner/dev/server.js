@@ -67,6 +67,7 @@ const directory = {
   },
   async setEnabled() {},
   async setApprover() {},
+  async resetPassword() { return { startPassword: 'Testversion-Neu1' }; },
 };
 const app = createApp({ db, notify, directory, appUrl: `http://localhost:${PORT}/` });
 

@@ -153,8 +153,10 @@ Der Planer oder das Werkzeug zeigt ein Start-Passwort an. Gib es der Person pers
 Anmelden wählt sie ein eigenes Passwort (mindestens 12 Zeichen, mit Groß- und
 Kleinbuchstaben und einer Zahl). Eine Code-App am Handy braucht es nicht.
 
-Für Personen ohne eigene E-Mail-Adresse gibt es kein „Passwort vergessen“ per Mail.
-Die Praxisleitung setzt dann in der AWS-Konsole unter Cognito ein neues Start-Passwort.
+**Passwort vergessen?** Im Planer unter **Einstellungen → Team** bei der Person auf
+**Bearbeiten** und dann auf **Neues Start-Passwort** klicken. Das neue Start-Passwort steht
+nur einmal da; gib es der Person persönlich. Das alte Passwort gilt dann nicht mehr.
+Das eigene Passwort setzt die andere Person aus der Praxisleitung zurück.
 
 ## Wo was steht
 

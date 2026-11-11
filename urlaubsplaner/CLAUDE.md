@@ -100,3 +100,7 @@ patient discovery page and has nothing to do with it.
   login page (CfnManagedLoginBranding with FORM_LOGO infra/assets/login-logo.png, ratio
   1:1–4:1 required) failed on deploy twice, so the login page keeps Cognito's default
   style for now. Retry only with the exact CloudFormation error in hand.
+- Forgotten passwords (11 Nov 2026): approvers click "Neues Start-Passwort" in a person's
+  edit dialog → POST /api/people/{userId}/password → AdminSetUserPassword with a new start
+  password (Permanent: false). Shown once, never stored or logged; audit action
+  `person-password`. Not for yourself (the other owner does it), not for deactivated people.

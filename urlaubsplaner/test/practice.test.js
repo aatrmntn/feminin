@@ -32,6 +32,7 @@ function setup({ entries = [], now = '2026-10-14T08:00:00Z' } = {}) {
     async createUser(args) { calls.push(['create', args]); return { userId: 'new-1', startPassword: 'Start-Passwort-1' }; },
     async setEnabled(...args) { calls.push(['enabled', ...args]); },
     async setApprover(...args) { calls.push(['approver', ...args]); },
+    async resetPassword(...args) { calls.push(['password', ...args]); return { startPassword: 'Neu-Passwort-1' }; },
   };
   const app = createApp({ db, now: () => new Date(now), directory, appUrl: 'https://planer.example/' });
   const call = (user, method, path, body, query = {}) => app.handle({ method, path, body, query, user });
@@ -168,6 +169,24 @@ test('people: add a person, start password shown once, username must be new', as
   assert.deepEqual(calls[0], ['create', { username: 'vera', email: 'vera@example.at', approver: false }]);
   assert.equal((await db.getPerson('new-1')).role, 'frontoffice');
   assert.ok(!JSON.stringify(db.audit).includes('Start-Passwort'), 'passwords never in the audit log');
+});
+
+test('people: new start password for someone who forgot theirs, approvers only, not yourself', async () => {
+  const { call, calls, db } = setup();
+  assert.equal((await call(FO, 'POST', '/api/people/bo1/password')).status, 403);
+  assert.equal((await call(OW, 'POST', '/api/people/ow1/password')).status, 400);
+  assert.equal((await call(OW, 'POST', '/api/people/nobody/password')).status, 404);
+  const res = await call(OW, 'POST', '/api/people/bo1/password');
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.item, { username: 'ida', name: 'Ida', startPassword: 'Neu-Passwort-1' });
+  assert.deepEqual(calls, [['password', 'ida']]);
+  // the other owner can reset an owner's password
+  assert.equal((await call(OW, 'POST', '/api/people/ow2/password')).status, 200);
+  assert.equal(db.audit.filter((a) => a.action === 'person-password').length, 2);
+  assert.ok(!JSON.stringify(db.audit).includes('Neu-Passwort'), 'passwords never in the audit log');
+  // deactivated people must be activated first
+  await call(OW, 'PUT', '/api/people/fo1', { active: false });
+  assert.equal((await call(OW, 'POST', '/api/people/fo1/password')).status, 400);
 });
 
 // ---------- export and feed ----------

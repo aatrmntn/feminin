@@ -3,7 +3,7 @@
 // someone else's password.
 import {
   AdminAddUserToGroupCommand, AdminCreateUserCommand, AdminDisableUserCommand, AdminEnableUserCommand,
-  AdminRemoveUserFromGroupCommand, CognitoIdentityProviderClient,
+  AdminRemoveUserFromGroupCommand, AdminSetUserPasswordCommand, CognitoIdentityProviderClient,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { HttpError } from './errors.js';
 import { startPassword } from './password.js';
@@ -36,6 +36,16 @@ export function createCognitoDirectory(userPoolId, client = new CognitoIdentityP
     async setEnabled(username, enabled) {
       const Command = enabled ? AdminEnableUserCommand : AdminDisableUserCommand;
       await client.send(new Command({ UserPoolId: userPoolId, Username: username }));
+    },
+
+    // A new start password when someone forgot theirs. The person must choose their own
+    // password at the next sign-in (Permanent: false); the old one stops working at once.
+    async resetPassword(username) {
+      const password = startPassword();
+      await client.send(new AdminSetUserPasswordCommand({
+        UserPoolId: userPoolId, Username: username, Password: password, Permanent: false,
+      }));
+      return { startPassword: password };
     },
 
     async setApprover(username, approver) {

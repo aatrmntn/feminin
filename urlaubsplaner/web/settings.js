@@ -152,6 +152,7 @@ function editPerson(p, data, ctx, reload) {
     h('p', { class: 'hint' }, 'Die Korrektur zählt einmal, im ersten Urlaubsjahr. Zum Beispiel für einen kurzen Zeitraum vor dem eigentlichen Urlaubsjahr.'),
     checkbox('p-approver', 'Darf Urlaub genehmigen', p.approver),
     checkbox('p-active', 'Aktiv', p.active, '(deaktiviert = kann sich nicht mehr anmelden, Daten bleiben)'),
+    resetButton(p, self),
     ...formActions(error));
   if (self) {
     form.querySelector('#p-active').disabled = true;
@@ -185,6 +186,31 @@ function editPerson(p, data, ctx, reload) {
     }
   });
   openDialog(`${p.name} bearbeiten`, form);
+}
+
+// Forgot password: a new start password, shown once. Not for yourself (the other owner does
+// that) and not for deactivated people.
+function resetButton(p, self) {
+  if (self || !p.active) return null;
+  const msg = h('p', { class: 'error', role: 'alert' });
+  const button = h('button', { class: 'button', type: 'button' }, 'Neues Start-Passwort');
+  button.addEventListener('click', async () => {
+    msg.textContent = '';
+    if (!window.confirm(`${p.name} bekommt ein neues Start-Passwort. Das alte Passwort gilt dann nicht mehr. Weiter?`)) return;
+    button.disabled = true;
+    try {
+      const res = await api('POST', `/api/people/${encodeURIComponent(p.userId)}/password`);
+      showPassword(res, res.startPassword, 'Neues Start-Passwort');
+    } catch (err) {
+      msg.textContent = err.message;
+      button.disabled = false;
+    }
+  });
+  return h('div', { class: 'field' },
+    h('span', { class: 'label' }, 'Passwort vergessen?'),
+    h('div', {}, button),
+    h('p', { class: 'hint' }, 'Gibt der Person ein neues Start-Passwort. Beim nächsten Anmelden wählt sie ein eigenes.'),
+    msg);
 }
 
 function addPerson(data, reload) {
@@ -225,8 +251,8 @@ function addPerson(data, reload) {
   openDialog('Person hinzufügen', form);
 }
 
-function showPassword(person, password) {
-  openDialog('Zugang angelegt',
+function showPassword(person, password, title = 'Zugang angelegt') {
+  openDialog(title,
     h('p', {}, `Gib ${person.name} diese Daten persönlich. Das Start-Passwort siehst du nur jetzt.`),
     h('dl', { class: 'credentials' },
       h('dt', {}, 'Benutzername'), h('dd', {}, h('code', {}, person.username)),

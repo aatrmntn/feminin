@@ -15,6 +15,7 @@ const NOT_SET_UP = 'Dein Zugang ist noch nicht eingerichtet. Bitte melde dich be
 // directory (optional): the login system (Cognito), so approvers can add and disable people:
 //   createUser({ username, email, approver }) => { userId, startPassword }
 //   setEnabled(username, enabled), setApprover(username, approver)
+//   resetPassword(username) => { startPassword }
 // appUrl: the planner's address ending in '/', for email links and the calendar feed.
 export function createApp({ db, now = () => new Date(), notify = null, directory = null, appUrl = '' }) {
   async function handle(req) {
@@ -42,6 +43,7 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
     const decision = path.match(/^\/api\/entries\/([0-9a-f-]{36})\/decision$/);
     const closure = path.match(/^\/api\/closures\/([0-9a-f-]{36})$/);
     const personPath = path.match(/^\/api\/people\/([A-Za-z0-9_.:-]{1,64})$/);
+    const passwordPath = path.match(/^\/api\/people\/([A-Za-z0-9_.:-]{1,64})\/password$/);
 
     if (req.method === 'GET' && path === '/api/overview') return overview(req);
     if (req.method === 'POST' && path === '/api/check') return check(req);
@@ -58,6 +60,7 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
     if (req.method === 'GET' && path === '/api/people') return listPeople(req);
     if (req.method === 'POST' && path === '/api/people') return addPerson(req);
     if (personPath && req.method === 'PUT') return updatePerson(req, personPath[1]);
+    if (passwordPath && req.method === 'POST') return resetPassword(req, passwordPath[1]);
     if (req.method === 'POST' && path === '/api/import') return importData(req);
     if (req.method === 'POST' && path === '/api/mail-test') return mailTest(req);
     if (req.method === 'GET' && path === '/api/export.ics') return exportIcs(req);
@@ -792,6 +795,26 @@ export function createApp({ db, now = () => new Date(), notify = null, directory
     await db.putPerson(value, simpleAudit(me, 'person-update', userId));
     const { settings, today } = await context();
     return { item: await presentPerson(value, today, settings) };
+  }
+
+  // A new start password for someone who forgot theirs. Shown once to the approver, who
+  // hands it over in person; it is never stored or logged. Not for yourself: the other
+  // owner does that, so nobody can lock themselves out by accident.
+  async function resetPassword(req, userId) {
+    const me = await caller(req);
+    requireApprover(me);
+    const person = await db.getPerson(userId);
+    if (!person) throw new HttpError(404, 'Diese Person gibt es nicht.');
+    if (userId === me.person.userId) {
+      throw new HttpError(400, 'Dein eigenes Passwort setzt die andere Person aus der Praxisleitung zurück.');
+    }
+    if (person.active === false) {
+      throw new HttpError(400, `${person.name} ist deaktiviert. Bitte zuerst wieder aktivieren.`);
+    }
+    requireDirectory();
+    const { startPassword } = await directory.resetPassword(person.username);
+    await db.putPerson({ ...person, updatedAt: now().toISOString() }, simpleAudit(me, 'person-password', userId));
+    return { item: { username: person.username, name: person.name, startPassword } };
   }
 
   // ----- taking over existing leave plans (approvers) -----

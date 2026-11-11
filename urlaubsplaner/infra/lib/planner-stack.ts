@@ -181,6 +181,7 @@ export class PlannerStack extends Stack {
         'cognito-idp:AdminRemoveUserFromGroup',
         'cognito-idp:AdminDisableUser',
         'cognito-idp:AdminEnableUser',
+        'cognito-idp:AdminSetUserPassword',
       ],
       resources: [userPool.userPoolArn],
     }));
