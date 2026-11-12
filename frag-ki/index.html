@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frag KI über feminin · Vorschau</title>
+  <meta name="description" content="Fragen Sie Ihren KI-Dienst nach feminin, dem Ärzt:innen- und Gesundheitszentrum für Frau, Mutter und Kind in Wien-Döbling.">
+  <meta name="robots" content="noindex,follow">
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#fff;color:#76351f;font:16px/1.6 "Segoe UI",Arial,sans-serif}header,main,footer{max-width:1000px;margin:auto;padding:28px 32px}header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e4d5ca;gap:24px}.brand{font:38px/1 Optima,Candara,Georgia,serif;color:#76351f;text-decoration:none}.brand small{display:block;font:10px/2 "Segoe UI",Arial,sans-serif;letter-spacing:2.4px;margin-top:9px}header>span{font-size:12px;color:#715344}main{padding-top:60px;padding-bottom:38px}.context{font-size:13px;color:#715344;margin:0 0 18px}.help{margin-top:36px;border-top:1px solid #e4d5ca;padding-top:22px;color:#715344;font-size:14px}.help a,footer a{color:#76351f;text-underline-offset:4px}footer{font-size:12px;color:#715344;padding-top:0;padding-bottom:40px}.help p{max-width:720px}code{font-size:12px;overflow-wrap:anywhere}.code{background:#f6efe9;padding:16px;white-space:pre-wrap}details{margin-top:16px}summary{cursor:pointer}@media(max-width:600px){header,main,footer{padding-left:20px;padding-right:20px}main{padding-top:30px}header>span{max-width:110px;text-align:right}.brand{font-size:32px}}
+  </style>
+</head>
+<body>
+  <header><a class="brand" href="https://feminin.at/">feminin<small>FRAU* MUTTER* KIND</small></a><span>Website-Erweiterung<br>Interaktive Vorschau</span></header>
+  <main>
+    <p class="context">So könnte der Bereich oberhalb der Fußzeile auf feminin.at aussehen.</p>
+    <div id="ki-bereich"></div>
+    <script src="widget.js" data-target="ki-bereich" data-source="https://feminin.at/"></script>
+    <noscript><p>Bitte aktivieren Sie JavaScript für die KI-Verknüpfungen. Alle Informationen finden Sie auf <a href="https://feminin.at/">feminin.at</a>.</p></noscript>
+    <div class="help">
+      <p>Die Schaltflächen funktionieren bereits. Dies ist eine separate Vorschau; der Einbau auf feminin.at erfolgt über die globale WordPress-Vorlage vor der Fußzeile.</p>
+      <details><summary>Einbettung für WordPress anzeigen</summary><p>Diesen Code einmal in einen HTML-Bereich der globalen Vorlage einfügen. Der öffentliche Link der jeweiligen Unterseite wird automatisch mitgegeben; Suchparameter werden entfernt.</p><pre class="code"><code>&lt;div id="feminin-ki"&gt;&lt;/div&gt;
+&lt;script src="https://aatrmntn.github.io/feminin/frag-ki/widget.js"
+        data-target="feminin-ki" defer&gt;&lt;/script&gt;</code></pre></details>
+    </div>
+  </main>
+  <footer>feminin · Nusswaldgasse 5 · 1190 Wien · <a href="https://feminin.at/">Zur Website ↗</a></footer>
+</body>
+</html>
