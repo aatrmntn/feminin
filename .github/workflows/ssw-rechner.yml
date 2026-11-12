@@ -5,7 +5,7 @@ name: SSW-Rechner veröffentlichen
 on:
   push:
     branches: [main]
-    paths: ['ssw-rechner/**', '.github/workflows/ssw-rechner.yml']
+    paths: ['ssw-rechner/**', 'frag-ki/**', '.github/workflows/ssw-rechner.yml']
   workflow_dispatch:
 
 permissions:
@@ -30,9 +30,12 @@ jobs:
           node-version: 22
       - name: Tests
         run: cd ssw-rechner && npm test
+      - name: KI-Bereich prüfen
+        run: node --check frag-ki/widget.js
       - name: Seite zusammenstellen
         run: |
-          mkdir -p _site/ssw-rechner
+          mkdir -p _site/ssw-rechner _site/frag-ki
+          cp frag-ki/index.html frag-ki/widget.js _site/frag-ki/
           cp ssw-rechner/index.html ssw-rechner/app.js ssw-rechner/ssw-rules.js ssw-rechner/style.css \
              ssw-rechner/icon.svg ssw-rechner/wordmark.png _site/ssw-rechner/
           # A version number on every file, so browsers fetch the new version at once.
